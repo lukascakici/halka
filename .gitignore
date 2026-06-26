@@ -1,0 +1,32 @@
+# OS
+.DS_Store
+
+# Node / Next (web/ also has its own .gitignore)
+node_modules/
+.next/
+out/
+build/
+*.log
+
+# Env
+.env
+.env.local
+.env*.local
+
+# Editor
+.vscode/
+.idea/
+
+# Rust (for Level 2+)
+contracts/target/
+target/
+
+# Internal planning docs — kept locally, never published to the public repo
+/PLAN.md
+/CLAUDE.md
+/IDEA-ESSAY.txt
+/IDEA-SUBMISSION.md
+/idea-submission.txt
+/level1-white-belt.txt
+/level2-yellow-belt.txt
+/level3-orange-belt.txt
