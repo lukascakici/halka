@@ -31,14 +31,14 @@ A working Stellar **Testnet** dApp covering the fundamentals: wallet connection,
 ## Getting started
 
 ### Prerequisites
-- [Node.js](https://nodejs.org/) 18+ and [pnpm](https://pnpm.io/)
+- [Node.js](https://nodejs.org/) 18+ (npm comes bundled)
 - The [Freighter](https://www.freighter.app/) browser extension, set to **Testnet**
 
 ### Run locally
 ```bash
 cd web
-pnpm install
-pnpm dev
+npm install
+npm run dev
 ```
 Open [http://localhost:3000](http://localhost:3000).
 
