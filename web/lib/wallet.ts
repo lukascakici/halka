@@ -1,21 +1,12 @@
-import {
-  isConnected,
-  requestAccess,
-  getAddress,
-  getNetwork,
-  signTransaction,
-} from "@stellar/freighter-api";
 import { NETWORK } from "./config";
 
 /**
- * Typed wallet errors so the UI can show precise feedback
- * (Level 1 requirement: clear success/failure states).
+ * Multi-wallet layer built on StellarWalletsKit (Level 2).
+ * The kit and its wallet modules touch browser-only APIs (web components,
+ * window), so everything is imported dynamically and only on the client.
  */
-export type WalletErrorKind =
-  | "not-installed"
-  | "rejected"
-  | "wrong-network"
-  | "unknown";
+
+export type WalletErrorKind = "not-available" | "rejected" | "unknown";
 
 export class WalletError extends Error {
   kind: WalletErrorKind;
@@ -26,70 +17,106 @@ export class WalletError extends Error {
   }
 }
 
-function mapFreighterError(raw: unknown): WalletError {
+function mapError(raw: unknown): WalletError {
   const msg =
-    (typeof raw === "object" && raw && "message" in raw
+    typeof raw === "object" && raw && "message" in raw
       ? String((raw as { message: unknown }).message)
-      : String(raw)) || "Unknown wallet error";
-  if (/declin|reject|denied|cancel/i.test(msg)) {
-    return new WalletError("rejected", "You rejected the request in Freighter.");
+      : String(raw);
+  if (/declin|reject|denied|cancel|close/i.test(msg)) {
+    return new WalletError("rejected", "Wallet request was cancelled.");
   }
-  return new WalletError("unknown", msg);
+  return new WalletError("unknown", msg || "Unknown wallet error.");
 }
 
-/** True if the Freighter extension is available in this browser. */
-export async function isFreighterInstalled(): Promise<boolean> {
-  try {
-    const res = await isConnected();
-    return Boolean(res.isConnected);
-  } catch {
-    return false;
+// Kit type is loaded lazily; keep a handle once initialized.
+type Kit = typeof import("@creit.tech/stellar-wallets-kit").StellarWalletsKit;
+let kitPromise: Promise<Kit> | null = null;
+
+async function ensureKit(): Promise<Kit> {
+  if (typeof window === "undefined") {
+    throw new WalletError("not-available", "Wallet is only available in the browser.");
   }
+  if (!kitPromise) {
+    kitPromise = (async () => {
+      const { StellarWalletsKit, Networks } = await import(
+        "@creit.tech/stellar-wallets-kit"
+      );
+      const [{ FreighterModule }, { xBullModule }, { AlbedoModule }, { HanaModule }] =
+        await Promise.all([
+          import("@creit.tech/stellar-wallets-kit/modules/freighter"),
+          import("@creit.tech/stellar-wallets-kit/modules/xbull"),
+          import("@creit.tech/stellar-wallets-kit/modules/albedo"),
+          import("@creit.tech/stellar-wallets-kit/modules/hana"),
+        ]);
+      StellarWalletsKit.init({
+        network: Networks.TESTNET,
+        modules: [
+          new FreighterModule(),
+          new xBullModule(),
+          new AlbedoModule(),
+          new HanaModule(),
+        ],
+      });
+      return StellarWalletsKit;
+    })();
+  }
+  return kitPromise;
 }
 
-/** Prompt the user to connect Freighter; returns the active address. */
+/** Open the wallet-selection modal and return the connected address. */
 export async function connectWallet(): Promise<string> {
-  if (!(await isFreighterInstalled())) {
-    throw new WalletError(
-      "not-installed",
-      "Freighter wallet was not found. Install it to continue.",
-    );
+  const kit = await ensureKit();
+  try {
+    const { address } = await kit.authModal();
+    if (!address) throw new WalletError("unknown", "No address returned.");
+    return address;
+  } catch (e) {
+    if (e instanceof WalletError) throw e;
+    throw mapError(e);
   }
-  const res = await requestAccess();
-  if (res.error) throw mapFreighterError(res.error);
-  if (!res.address) throw new WalletError("unknown", "No address returned.");
-  return res.address;
 }
 
-/** Silently restore the address if access was already granted (no prompt). */
+/** Restore a previously connected address without prompting, if possible. */
 export async function restoreAddress(): Promise<string | null> {
   try {
-    if (!(await isFreighterInstalled())) return null;
-    const res = await getAddress();
-    if (res.error || !res.address) return null;
-    return res.address;
+    const kit = await ensureKit();
+    const { address } = await kit.getAddress();
+    return address || null;
   } catch {
     return null;
   }
 }
 
-/** Read the network Freighter is currently pointed at. */
+/** The network passphrase the active wallet is pointed at. */
 export async function getActiveNetworkPassphrase(): Promise<string | null> {
   try {
-    const res = await getNetwork();
-    if (res.error) return null;
-    return res.networkPassphrase ?? null;
+    const kit = await ensureKit();
+    const { networkPassphrase } = await kit.getNetwork();
+    return networkPassphrase ?? null;
   } catch {
     return null;
   }
 }
 
-/** Sign a transaction XDR with Freighter on Testnet. */
+export async function disconnectWallet(): Promise<void> {
+  try {
+    const kit = await ensureKit();
+    await kit.disconnect();
+  } catch {
+    /* ignore — local state is cleared by the provider regardless */
+  }
+}
+
+/** Sign a transaction XDR with the active wallet on Testnet. */
 export async function signXdr(xdr: string, address: string): Promise<string> {
-  const res = await signTransaction(xdr, {
-    networkPassphrase: NETWORK.passphrase,
-    address,
-  });
-  if (res.error) throw mapFreighterError(res.error);
-  return res.signedTxXdr;
+  const kit = await ensureKit();
+  try {
+    const { signedTxXdr } = await kit.signTransaction(xdr, {
+      networkPassphrase: NETWORK.passphrase,
+      address,
+    });
+    return signedTxXdr;
+  } catch (e) {
+    throw mapError(e);
+  }
 }

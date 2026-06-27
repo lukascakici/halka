@@ -12,6 +12,7 @@ import {
   connectWallet,
   restoreAddress,
   getActiveNetworkPassphrase,
+  disconnectWallet,
   signXdr,
   WalletError,
 } from "@/lib/wallet";
@@ -22,16 +23,13 @@ type Status = "disconnected" | "connecting" | "connected";
 interface WalletState {
   address: string | null;
   status: Status;
-  /** Passphrase Freighter is pointed at; null until known. */
   networkPassphrase: string | null;
   isWrongNetwork: boolean;
   error: string | null;
   connect: () => Promise<void>;
-  disconnect: () => void;
+  disconnect: () => Promise<void>;
   signXdr: (xdr: string) => Promise<string>;
 }
-
-const STORAGE_KEY = "halka:connected";
 
 const WalletContext = createContext<WalletState | null>(null);
 
@@ -44,14 +42,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   const refreshNetwork = useCallback(async () => {
-    const passphrase = await getActiveNetworkPassphrase();
-    setNetworkPassphrase(passphrase);
+    setNetworkPassphrase(await getActiveNetworkPassphrase());
   }, []);
 
-  // Silent restore if the user connected before in this browser.
+  // Restore a previously connected wallet (the kit persists its own state).
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (window.localStorage.getItem(STORAGE_KEY) !== "1") return;
     (async () => {
       const restored = await restoreAddress();
       if (restored) {
@@ -69,26 +64,24 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       const addr = await connectWallet();
       setAddress(addr);
       setStatus("connected");
-      window.localStorage.setItem(STORAGE_KEY, "1");
       await refreshNetwork();
     } catch (e) {
       setStatus("disconnected");
       setAddress(null);
       const message =
         e instanceof WalletError ? e.message : "Could not connect to wallet.";
-      setError(message);
+      // A cancelled modal is not a real error worth shouting about.
+      setError(e instanceof WalletError && e.kind === "rejected" ? null : message);
       throw e;
     }
   }, [refreshNetwork]);
 
-  const disconnect = useCallback(() => {
+  const disconnect = useCallback(async () => {
+    await disconnectWallet();
     setAddress(null);
     setStatus("disconnected");
     setNetworkPassphrase(null);
     setError(null);
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem(STORAGE_KEY);
-    }
   }, []);
 
   const sign = useCallback(

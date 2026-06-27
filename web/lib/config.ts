@@ -8,9 +8,20 @@ export const NETWORK = {
   passphrase: Networks.TESTNET,
   label: "Testnet",
   horizonUrl: "https://horizon-testnet.stellar.org",
+  sorobanRpcUrl: "https://soroban-testnet.stellar.org",
   friendbotUrl: "https://friendbot.stellar.org",
   explorerTx: (hash: string) =>
     `https://stellar.expert/explorer/testnet/tx/${hash}`,
   explorerAccount: (address: string) =>
     `https://stellar.expert/explorer/testnet/account/${address}`,
+  explorerContract: (id: string) =>
+    `https://stellar.expert/explorer/testnet/contract/${id}`,
+} as const;
+
+/** Deployed contract addresses (see docs/deployments.md). */
+export const CONTRACTS = {
+  /** The Circle contract instance used as the Level 2 demo circle. */
+  circle: "CBMYN4H5BTMLRPZUZBMPT4FKHL7BNAC5P2I4JLHUDTYA4FB46NCTLKLT",
+  /** Native XLM wrapped as a Stellar Asset Contract (the contribution token). */
+  token: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
 } as const;
