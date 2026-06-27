@@ -20,6 +20,12 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+@layer components {
+  .input {
+    @apply w-full rounded-xl border border-zinc-200 px-4 py-3 text-sm outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20;
+  }
+}
+
 /* Cleaner number inputs — no spinners */
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {

@@ -30,6 +30,8 @@ export function BalanceCard({ refreshNonce }: { refreshNonce: number }) {
   }, [address]);
 
   useEffect(() => {
+    // Fetch balance on mount and whenever a transaction succeeds.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load, refreshNonce]);
 
