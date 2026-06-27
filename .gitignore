@@ -17,9 +17,14 @@ build/
 .vscode/
 .idea/
 
-# Rust (for Level 2+)
+# Rust / Soroban (Level 2+)
 contracts/target/
 target/
+.soroban/
+.stellar/
+
+# Claude Code local settings
+.claude/settings.local.json
 
 # Internal planning docs — kept locally, never published to the public repo
 /PLAN.md
@@ -30,3 +35,7 @@ target/
 /level1-white-belt.txt
 /level2-yellow-belt.txt
 /level3-orange-belt.txt
+/level4-green-belt.txt
+/level5-blue-belt.txt
+/level6-black-belt.txt
+/level7-master-track.txt
