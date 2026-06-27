@@ -20,7 +20,9 @@
     ],
     "paths": {
       "@/*": ["./*"],
-      "@circle-client": ["./packages/circle-client/src/index.ts"]
+      "@circle-client": ["./packages/circle-client/src/index.ts"],
+      "@factory-client": ["./packages/factory-client/src/index.ts"],
+      "@reputation-client": ["./packages/reputation-client/src/index.ts"]
     }
   },
   "include": [

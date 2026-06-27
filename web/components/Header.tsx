@@ -9,7 +9,7 @@ import { NETWORK } from "@/lib/config";
 
 const NAV = [
   { href: "/", label: "Wallet" },
-  { href: "/circle", label: "Circle" },
+  { href: "/circles", label: "Circles" },
 ];
 
 export function Header() {
@@ -33,7 +33,10 @@ export function Header() {
           </Link>
           <nav className="hidden items-center gap-1 sm:flex">
             {NAV.map((item) => {
-              const active = pathname === item.href;
+              const active =
+                item.href === "/"
+                  ? pathname === "/"
+                  : pathname.startsWith("/circle");
               return (
                 <Link
                   key={item.href}

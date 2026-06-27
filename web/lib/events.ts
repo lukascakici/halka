@@ -1,11 +1,11 @@
 import { rpc, scValToNative } from "@stellar/stellar-sdk";
-import { NETWORK, CONTRACTS } from "./config";
+import { NETWORK } from "./config";
 
 const server = new rpc.Server(NETWORK.sorobanRpcUrl);
 
 export interface CircleEvent {
   id: string;
-  name: string; // initialized | joined | started | contributed
+  name: string; // joined | started | contributed | paid_out | slashed
   ledgerClosedAt: string;
   txHash: string;
   member?: string;
@@ -13,16 +13,19 @@ export interface CircleEvent {
 }
 
 /**
- * Fetch recent contract events for the circle, newest first.
+ * Fetch recent contract events for a circle, newest first.
  * Used to drive the live activity feed and state synchronization.
  */
-export async function fetchCircleEvents(limit = 25): Promise<CircleEvent[]> {
+export async function fetchCircleEvents(
+  circleId: string,
+  limit = 25,
+): Promise<CircleEvent[]> {
   const latest = await server.getLatestLedger();
   const startLedger = Math.max(1, latest.sequence - 9000);
 
   const res = await server.getEvents({
     startLedger,
-    filters: [{ type: "contract", contractIds: [CONTRACTS.circle] }],
+    filters: [{ type: "contract", contractIds: [circleId] }],
     limit,
   });
 

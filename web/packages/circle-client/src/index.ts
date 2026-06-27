@@ -34,7 +34,7 @@ if (typeof window !== "undefined") {
 export const networks = {
   testnet: {
     networkPassphrase: "Test SDF Network ; September 2015",
-    contractId: "CBMYN4H5BTMLRPZUZBMPT4FKHL7BNAC5P2I4JLHUDTYA4FB46NCTLKLT",
+    contractId: "CDJDOHVF2CADUGSDSPVZ4C7IQ56XYQ54N3CR3465GBX3K6JTHK5QGL6Q",
   }
 } as const
 
@@ -47,7 +47,10 @@ export const Errors = {
   6: {message:"NotMember"},
   7: {message:"NotStarted"},
   8: {message:"AlreadyStarted"},
-  9: {message:"AlreadyContributed"}
+  9: {message:"AlreadyContributed"},
+  10: {message:"RoundIncomplete"},
+  11: {message:"NotRecipient"},
+  12: {message:"NotDefaulted"}
 }
 
 
@@ -57,10 +60,13 @@ export type DataKey = {tag: "Config", values: void} | {tag: "Members", values: v
 
 
 
+
 export interface CircleConfig {
   admin: string;
+  collateral_amount: i128;
   contribution_amount: i128;
   max_members: u32;
+  reputation: string;
   started: boolean;
   token: string;
 }
@@ -68,9 +74,16 @@ export interface CircleConfig {
 export interface Client {
   /**
    * Construct and simulate a join transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Join the circle while it is still open (before it starts).
+   * Join the circle (before it starts), posting collateral.
    */
   join: ({member}: {member: string}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
+
+  /**
+   * Construct and simulate a slash transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Admin slashes a member who didn't contribute this round: their collateral
+   * covers the missed contribution and their reputation drops.
+   */
+  slash: ({member}: {member: string}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
 
   /**
    * Construct and simulate a start transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -90,8 +103,7 @@ export interface Client {
 
   /**
    * Construct and simulate a contribute transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Contribute the fixed amount for the current round.
-   * Transfers tokens from the member into the contract's pot.
+   * Contribute the fixed amount for the current round. Rewards reputation.
    */
   contribute: ({member}: {member: string}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
 
@@ -102,14 +114,27 @@ export interface Client {
 
   /**
    * Construct and simulate a initialize transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Create the circle. Must be called once by the admin.
+   * Create the circle. Called once (by the admin, or by the Factory on the
+   * admin's behalf).
    */
-  initialize: ({admin, token, contribution_amount, max_members}: {admin: string, token: string, contribution_amount: i128, max_members: u32}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
+  initialize: ({admin, token, reputation, contribution_amount, collateral_amount, max_members}: {admin: string, token: string, reputation: string, contribution_amount: i128, collateral_amount: i128, max_members: u32}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
 
   /**
    * Construct and simulate a get_members transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
   get_members: (options?: MethodOptions) => Promise<AssembledTransaction<Array<string>>>
+
+  /**
+   * Construct and simulate a claim_payout transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * The current round's recipient claims the pot, rotating to the next round.
+   */
+  claim_payout: (options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
+
+  /**
+   * Construct and simulate a get_recipient transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * The member who receives the pot in the given round.
+   */
+  get_recipient: ({round}: {round: u32}, options?: MethodOptions) => Promise<AssembledTransaction<Result<string>>>
 
   /**
    * Construct and simulate a has_contributed transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -134,27 +159,32 @@ export class Client extends ContractClient {
   }
   constructor(public readonly options: ContractClientOptions) {
     super(
-      new ContractSpec([ "AAAABAAAAAAAAAAAAAAABUVycm9yAAAAAAAACQAAAAAAAAASQWxyZWFkeUluaXRpYWxpemVkAAAAAAABAAAAAAAAAA5Ob3RJbml0aWFsaXplZAAAAAAAAgAAAAAAAAANSW52YWxpZFBhcmFtcwAAAAAAAAMAAAAAAAAACkNpcmNsZUZ1bGwAAAAAAAQAAAAAAAAADUFscmVhZHlNZW1iZXIAAAAAAAAFAAAAAAAAAAlOb3RNZW1iZXIAAAAAAAAGAAAAAAAAAApOb3RTdGFydGVkAAAAAAAHAAAAAAAAAA5BbHJlYWR5U3RhcnRlZAAAAAAACAAAAAAAAAASQWxyZWFkeUNvbnRyaWJ1dGVkAAAAAAAJ",
+      new ContractSpec([ "AAAABAAAAAAAAAAAAAAABUVycm9yAAAAAAAADAAAAAAAAAASQWxyZWFkeUluaXRpYWxpemVkAAAAAAABAAAAAAAAAA5Ob3RJbml0aWFsaXplZAAAAAAAAgAAAAAAAAANSW52YWxpZFBhcmFtcwAAAAAAAAMAAAAAAAAACkNpcmNsZUZ1bGwAAAAAAAQAAAAAAAAADUFscmVhZHlNZW1iZXIAAAAAAAAFAAAAAAAAAAlOb3RNZW1iZXIAAAAAAAAGAAAAAAAAAApOb3RTdGFydGVkAAAAAAAHAAAAAAAAAA5BbHJlYWR5U3RhcnRlZAAAAAAACAAAAAAAAAASQWxyZWFkeUNvbnRyaWJ1dGVkAAAAAAAJAAAAAAAAAA9Sb3VuZEluY29tcGxldGUAAAAACgAAAAAAAAAMTm90UmVjaXBpZW50AAAACwAAAAAAAAAMTm90RGVmYXVsdGVkAAAADA==",
         "AAAABQAAAAAAAAAAAAAABkpvaW5lZAAAAAAAAQAAAAZqb2luZWQAAAAAAAEAAAAAAAAABm1lbWJlcgAAAAAAEwAAAAEAAAAC",
         "AAAAAgAAAAAAAAAAAAAAB0RhdGFLZXkAAAAABQAAAAAAAAAAAAAABkNvbmZpZwAAAAAAAAAAAAAAAAAHTWVtYmVycwAAAAAAAAAAAAAAAAVSb3VuZAAAAAAAAAAAAAAAAAAAA1BvdAAAAAABAAAANFdoZXRoZXIgYG1lbWJlcmAgaGFzIGNvbnRyaWJ1dGVkIGluIGEgZ2l2ZW4gYHJvdW5kYC4AAAALQ29udHJpYnV0ZWQAAAAAAgAAAAQAAAAT",
+        "AAAABQAAAAAAAAAAAAAAB1BhaWRPdXQAAAAAAQAAAAhwYWlkX291dAAAAAMAAAAAAAAACXJlY2lwaWVudAAAAAAAABMAAAABAAAAAAAAAAZhbW91bnQAAAAAAAsAAAAAAAAAAAAAAAVyb3VuZAAAAAAAAAQAAAAAAAAAAg==",
+        "AAAABQAAAAAAAAAAAAAAB1NsYXNoZWQAAAAAAQAAAAdzbGFzaGVkAAAAAAIAAAAAAAAABm1lbWJlcgAAAAAAEwAAAAEAAAAAAAAABXJvdW5kAAAAAAAABAAAAAAAAAAC",
         "AAAABQAAAAAAAAAAAAAAB1N0YXJ0ZWQAAAAAAQAAAAdzdGFydGVkAAAAAAEAAAAAAAAABXJvdW5kAAAAAAAABAAAAAAAAAAC",
-        "AAAAAAAAADpKb2luIHRoZSBjaXJjbGUgd2hpbGUgaXQgaXMgc3RpbGwgb3BlbiAoYmVmb3JlIGl0IHN0YXJ0cykuAAAAAAAEam9pbgAAAAEAAAAAAAAABm1lbWJlcgAAAAAAEwAAAAEAAAPpAAAAAgAAAAM=",
+        "AAAAAAAAADdKb2luIHRoZSBjaXJjbGUgKGJlZm9yZSBpdCBzdGFydHMpLCBwb3N0aW5nIGNvbGxhdGVyYWwuAAAAAARqb2luAAAAAQAAAAAAAAAGbWVtYmVyAAAAAAATAAAAAQAAA+kAAAACAAAAAw==",
         "AAAABQAAAAAAAAAAAAAAC0NvbnRyaWJ1dGVkAAAAAAEAAAALY29udHJpYnV0ZWQAAAAAAwAAAAAAAAAGbWVtYmVyAAAAAAATAAAAAQAAAAAAAAAGYW1vdW50AAAAAAALAAAAAAAAAAAAAAAFcm91bmQAAAAAAAAEAAAAAAAAAAI=",
-        "AAAABQAAAAAAAAAAAAAAC0luaXRpYWxpemVkAAAAAAEAAAALaW5pdGlhbGl6ZWQAAAAAAQAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAQAAAAI=",
-        "AAAAAQAAAAAAAAAAAAAADENpcmNsZUNvbmZpZwAAAAUAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAATY29udHJpYnV0aW9uX2Ftb3VudAAAAAALAAAAAAAAAAttYXhfbWVtYmVycwAAAAAEAAAAAAAAAAdzdGFydGVkAAAAAAEAAAAAAAAABXRva2VuAAAAAAAAEw==",
+        "AAAAAQAAAAAAAAAAAAAADENpcmNsZUNvbmZpZwAAAAcAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAARY29sbGF0ZXJhbF9hbW91bnQAAAAAAAALAAAAAAAAABNjb250cmlidXRpb25fYW1vdW50AAAAAAsAAAAAAAAAC21heF9tZW1iZXJzAAAAAAQAAAAAAAAACnJlcHV0YXRpb24AAAAAABMAAAAAAAAAB3N0YXJ0ZWQAAAAAAQAAAAAAAAAFdG9rZW4AAAAAAAAT",
+        "AAAAAAAAAIRBZG1pbiBzbGFzaGVzIGEgbWVtYmVyIHdobyBkaWRuJ3QgY29udHJpYnV0ZSB0aGlzIHJvdW5kOiB0aGVpciBjb2xsYXRlcmFsCmNvdmVycyB0aGUgbWlzc2VkIGNvbnRyaWJ1dGlvbiBhbmQgdGhlaXIgcmVwdXRhdGlvbiBkcm9wcy4AAAAFc2xhc2gAAAAAAAABAAAAAAAAAAZtZW1iZXIAAAAAABMAAAABAAAD6QAAAAIAAAAD",
         "AAAAAAAAAC5Mb2NrIG1lbWJlcnNoaXAgYW5kIGJlZ2luIHJvdW5kIDEuIEFkbWluIG9ubHkuAAAAAAAFc3RhcnQAAAAAAAAAAAAAAQAAA+kAAAACAAAAAw==",
         "AAAAAAAAAAAAAAAHZ2V0X3BvdAAAAAAAAAAAAQAAAAs=",
         "AAAAAAAAAAAAAAAJZ2V0X3JvdW5kAAAAAAAAAAAAAAEAAAAE",
-        "AAAAAAAAAGxDb250cmlidXRlIHRoZSBmaXhlZCBhbW91bnQgZm9yIHRoZSBjdXJyZW50IHJvdW5kLgpUcmFuc2ZlcnMgdG9rZW5zIGZyb20gdGhlIG1lbWJlciBpbnRvIHRoZSBjb250cmFjdCdzIHBvdC4AAAAKY29udHJpYnV0ZQAAAAAAAQAAAAAAAAAGbWVtYmVyAAAAAAATAAAAAQAAA+kAAAACAAAAAw==",
+        "AAAAAAAAAEZDb250cmlidXRlIHRoZSBmaXhlZCBhbW91bnQgZm9yIHRoZSBjdXJyZW50IHJvdW5kLiBSZXdhcmRzIHJlcHV0YXRpb24uAAAAAAAKY29udHJpYnV0ZQAAAAAAAQAAAAAAAAAGbWVtYmVyAAAAAAATAAAAAQAAA+kAAAACAAAAAw==",
         "AAAAAAAAAAAAAAAKZ2V0X2NvbmZpZwAAAAAAAAAAAAEAAAPpAAAH0AAAAAxDaXJjbGVDb25maWcAAAAD",
-        "AAAAAAAAADRDcmVhdGUgdGhlIGNpcmNsZS4gTXVzdCBiZSBjYWxsZWQgb25jZSBieSB0aGUgYWRtaW4uAAAACmluaXRpYWxpemUAAAAAAAQAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAFdG9rZW4AAAAAAAATAAAAAAAAABNjb250cmlidXRpb25fYW1vdW50AAAAAAsAAAAAAAAAC21heF9tZW1iZXJzAAAAAAQAAAABAAAD6QAAAAIAAAAD",
+        "AAAAAAAAAFdDcmVhdGUgdGhlIGNpcmNsZS4gQ2FsbGVkIG9uY2UgKGJ5IHRoZSBhZG1pbiwgb3IgYnkgdGhlIEZhY3Rvcnkgb24gdGhlCmFkbWluJ3MgYmVoYWxmKS4AAAAACmluaXRpYWxpemUAAAAAAAYAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAFdG9rZW4AAAAAAAATAAAAAAAAAApyZXB1dGF0aW9uAAAAAAATAAAAAAAAABNjb250cmlidXRpb25fYW1vdW50AAAAAAsAAAAAAAAAEWNvbGxhdGVyYWxfYW1vdW50AAAAAAAACwAAAAAAAAALbWF4X21lbWJlcnMAAAAABAAAAAEAAAPpAAAAAgAAAAM=",
         "AAAAAAAAAAAAAAALZ2V0X21lbWJlcnMAAAAAAAAAAAEAAAPqAAAAEw==",
+        "AAAAAAAAAElUaGUgY3VycmVudCByb3VuZCdzIHJlY2lwaWVudCBjbGFpbXMgdGhlIHBvdCwgcm90YXRpbmcgdG8gdGhlIG5leHQgcm91bmQuAAAAAAAADGNsYWltX3BheW91dAAAAAAAAAABAAAD6QAAAAIAAAAD",
+        "AAAAAAAAADNUaGUgbWVtYmVyIHdobyByZWNlaXZlcyB0aGUgcG90IGluIHRoZSBnaXZlbiByb3VuZC4AAAAADWdldF9yZWNpcGllbnQAAAAAAAABAAAAAAAAAAVyb3VuZAAAAAAAAAQAAAABAAAD6QAAABMAAAAD",
         "AAAAAAAAAAAAAAAPaGFzX2NvbnRyaWJ1dGVkAAAAAAIAAAAAAAAABXJvdW5kAAAAAAAABAAAAAAAAAAGbWVtYmVyAAAAAAATAAAAAQAAAAE=" ]),
       options
     )
   }
   public readonly fromJSON = {
     join: this.txFromJSON<Result<void>>,
+        slash: this.txFromJSON<Result<void>>,
         start: this.txFromJSON<Result<void>>,
         get_pot: this.txFromJSON<i128>,
         get_round: this.txFromJSON<u32>,
@@ -162,6 +192,8 @@ export class Client extends ContractClient {
         get_config: this.txFromJSON<Result<CircleConfig>>,
         initialize: this.txFromJSON<Result<void>>,
         get_members: this.txFromJSON<Array<string>>,
+        claim_payout: this.txFromJSON<Result<void>>,
+        get_recipient: this.txFromJSON<Result<string>>,
         has_contributed: this.txFromJSON<boolean>
   }
 }

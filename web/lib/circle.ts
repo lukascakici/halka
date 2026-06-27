@@ -1,24 +1,8 @@
-import { Client, type CircleConfig } from "@circle-client";
-import { NETWORK, CONTRACTS } from "./config";
+import { Client as CircleClient, type CircleConfig } from "@circle-client";
+import { NETWORK } from "./config";
 import { signXdr } from "./wallet";
 
-/** Native XLM (and its SAC) use 7 decimals. */
-const DECIMALS = 7n;
-const ONE_XLM = 10n ** DECIMALS;
-
-export function xlmToStroops(amount: string | number): bigint {
-  const [whole, frac = ""] = String(amount).split(".");
-  const fracPadded = (frac + "0".repeat(7)).slice(0, 7);
-  return BigInt(whole || "0") * ONE_XLM + BigInt(fracPadded || "0");
-}
-
-export function stroopsToXlm(stroops: bigint): string {
-  const neg = stroops < 0n;
-  const abs = neg ? -stroops : stroops;
-  const whole = abs / ONE_XLM;
-  const frac = (abs % ONE_XLM).toString().padStart(7, "0").replace(/0+$/, "");
-  return `${neg ? "-" : ""}${whole}${frac ? "." + frac : ""}`;
-}
+export { xlmToStroops, stroopsToXlm } from "./units";
 
 /** A contract-level error surfaced to the UI with a friendly message. */
 export class ContractError extends Error {
@@ -40,15 +24,18 @@ const FRIENDLY: Record<string, string> = {
   NotStarted: "The circle hasn't started yet.",
   AlreadyStarted: "The circle has already started.",
   AlreadyContributed: "You have already contributed this round.",
+  RoundIncomplete: "Not everyone has contributed this round yet.",
+  NotRecipient: "Only this round's recipient can claim the pot.",
+  NotDefaulted: "This member has already contributed.",
 };
 
 function toContractError(code: string): ContractError {
   return new ContractError(code, FRIENDLY[code] ?? code);
 }
 
-function makeClient(publicKey: string): Client {
-  return new Client({
-    contractId: CONTRACTS.circle,
+function makeClient(circleId: string, publicKey: string): CircleClient {
+  return new CircleClient({
+    contractId: circleId,
     networkPassphrase: NETWORK.passphrase,
     rpcUrl: NETWORK.sorobanRpcUrl,
     publicKey,
@@ -60,32 +47,30 @@ function makeClient(publicKey: string): Client {
 }
 
 export interface CircleState {
-  initialized: boolean;
-  config?: CircleConfig;
+  id: string;
+  config: CircleConfig;
   members: string[];
   round: number;
   pot: bigint;
-  /** Whether the connected member has contributed in the current round. */
-  contributedThisRound: boolean;
+  /** Current-round recipient (rotates each round), if started. */
+  recipient: string | null;
+  /** Per-member contribution status for the current round. */
+  contributions: Record<string, boolean>;
   isMember: boolean;
   isAdmin: boolean;
+  contributedThisRound: boolean;
 }
 
-/** Read the full circle state for the connected user. */
-export async function readCircleState(publicKey: string): Promise<CircleState> {
-  const client = makeClient(publicKey);
+/** Read the full state of one circle for the connected user. */
+export async function readCircleState(
+  circleId: string,
+  publicKey: string,
+): Promise<CircleState> {
+  const client = makeClient(circleId, publicKey);
 
   const configTx = await client.get_config();
   if (configTx.result.isErr()) {
-    return {
-      initialized: false,
-      members: [],
-      round: 0,
-      pot: 0n,
-      contributedThisRound: false,
-      isMember: false,
-      isAdmin: false,
-    };
+    throw toContractError(configTx.result.unwrapErr().message);
   }
   const config = configTx.result.unwrap();
 
@@ -98,29 +83,67 @@ export async function readCircleState(publicKey: string): Promise<CircleState> {
   const round = roundTx.result;
   const pot = potTx.result;
 
-  let contributedThisRound = false;
-  if (round > 0) {
-    const c = await client.has_contributed({ round, member: publicKey });
-    contributedThisRound = c.result;
+  const contributions: Record<string, boolean> = {};
+  let recipient: string | null = null;
+  if (round > 0 && members.length > 0) {
+    const flags = await Promise.all(
+      members.map((m) => client.has_contributed({ round, member: m })),
+    );
+    members.forEach((m, i) => (contributions[m] = flags[i].result));
+    const recTx = await client.get_recipient({ round });
+    recipient = recTx.result.isOk() ? recTx.result.unwrap() : null;
   }
 
   return {
-    initialized: true,
+    id: circleId,
     config,
     members,
     round,
     pot,
-    contributedThisRound,
+    recipient,
+    contributions,
     isMember: members.includes(publicKey),
     isAdmin: config.admin === publicKey,
+    contributedThisRound: contributions[publicKey] ?? false,
   };
 }
 
-/** Sign + send an assembled tx, surfacing contract errors. Returns the tx hash. */
-async function submit(
-  tx: { result: unknown; signAndSend: () => Promise<{ sendTransactionResponse?: { hash?: string } }> },
-): Promise<string> {
-  const sim = tx.result as { isErr?: () => boolean; unwrapErr?: () => { message: string } };
+export interface CircleSummary {
+  id: string;
+  config: CircleConfig;
+  memberCount: number;
+  round: number;
+}
+
+/** A lightweight read for circle cards in the list. */
+export async function readCircleSummary(
+  circleId: string,
+  publicKey: string,
+): Promise<CircleSummary> {
+  const client = makeClient(circleId, publicKey);
+  const cfgTx = await client.get_config();
+  if (cfgTx.result.isErr()) {
+    throw toContractError(cfgTx.result.unwrapErr().message);
+  }
+  const config = cfgTx.result.unwrap();
+  const [membersTx, roundTx] = await Promise.all([
+    client.get_members(),
+    client.get_round(),
+  ]);
+  return {
+    id: circleId,
+    config,
+    memberCount: membersTx.result.length,
+    round: roundTx.result,
+  };
+}
+
+/** Sign + send a tx, surfacing contract errors. Returns the tx hash. */
+async function submit(tx: {
+  result: { isErr?: () => boolean; unwrapErr?: () => { message: string } };
+  signAndSend: () => Promise<{ sendTransactionResponse?: { hash?: string } }>;
+}): Promise<string> {
+  const sim = tx.result;
   if (sim && typeof sim.isErr === "function" && sim.isErr()) {
     throw toContractError(sim.unwrapErr!().message);
   }
@@ -128,32 +151,28 @@ async function submit(
   return sent.sendTransactionResponse?.hash ?? "";
 }
 
-export async function initializeCircle(
+export async function joinCircle(circleId: string, publicKey: string) {
+  return submit(await makeClient(circleId, publicKey).join({ member: publicKey }));
+}
+
+export async function startCircle(circleId: string, publicKey: string) {
+  return submit(await makeClient(circleId, publicKey).start());
+}
+
+export async function contribute(circleId: string, publicKey: string) {
+  return submit(
+    await makeClient(circleId, publicKey).contribute({ member: publicKey }),
+  );
+}
+
+export async function claimPayout(circleId: string, publicKey: string) {
+  return submit(await makeClient(circleId, publicKey).claim_payout());
+}
+
+export async function slashMember(
+  circleId: string,
   publicKey: string,
-  contributionXlm: string,
-  maxMembers: number,
-): Promise<string> {
-  const client = makeClient(publicKey);
-  const tx = await client.initialize({
-    admin: publicKey,
-    token: CONTRACTS.token,
-    contribution_amount: xlmToStroops(contributionXlm),
-    max_members: maxMembers,
-  });
-  return submit(tx);
-}
-
-export async function joinCircle(publicKey: string): Promise<string> {
-  const client = makeClient(publicKey);
-  return submit(await client.join({ member: publicKey }));
-}
-
-export async function startCircle(publicKey: string): Promise<string> {
-  const client = makeClient(publicKey);
-  return submit(await client.start());
-}
-
-export async function contribute(publicKey: string): Promise<string> {
-  const client = makeClient(publicKey);
-  return submit(await client.contribute({ member: publicKey }));
+  member: string,
+) {
+  return submit(await makeClient(circleId, publicKey).slash({ member }));
 }
