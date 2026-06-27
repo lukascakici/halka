@@ -4,6 +4,8 @@
 
 Halka turns the trusted savings circle — known as _altın günü_ in Turkey, _tanda_ in Latin America, _susu_ in West Africa, _chit fund_ in India — into a transparent, enforceable, borderless protocol on Stellar.
 
+**Live demo:** [halka-kappa.vercel.app](https://halka-kappa.vercel.app/)
+
 This repository is built level-by-level for the **Stellar Journey to Mastery** builder challenge.
 
 ---
