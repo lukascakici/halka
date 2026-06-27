@@ -44,6 +44,30 @@ function circleSig(s: CircleState): string {
   return `${s.config.started}|${s.round}|${s.pot}|${s.members.length}|${s.contributedThisRound}|${contributed}`;
 }
 
+/**
+ * The Soroban RPC sits behind several nodes at slightly different ledgers, so
+ * back-to-back reads can briefly disagree (causing the UI to flicker). State is
+ * monotonic within a round, so we never let a newer read regress: contribution
+ * flags only go true, and we keep the more-advanced read.
+ */
+function mergeState(prev: CircleState | null, next: CircleState): CircleState {
+  if (!prev || next.round !== prev.round) {
+    return !prev || next.round > prev.round ? next : prev;
+  }
+  const contributions = { ...prev.contributions };
+  for (const [k, v] of Object.entries(next.contributions)) {
+    if (v) contributions[k] = true;
+  }
+  const prevC = Object.values(prev.contributions).filter(Boolean).length;
+  const nextC = Object.values(next.contributions).filter(Boolean).length;
+  const base = nextC >= prevC ? next : prev;
+  return {
+    ...base,
+    contributions,
+    contributedThisRound: prev.contributedThisRound || next.contributedThisRound,
+  };
+}
+
 export function CircleDetail({ circleId }: { circleId: string }) {
   const { address, status, connect } = useWallet();
   const [state, setState] = useState<CircleState | null>(null);
@@ -60,7 +84,7 @@ export function CircleDetail({ circleId }: { circleId: string }) {
         fetchCircleEvents(circleId).catch(() => [] as CircleEvent[]),
         getScores(address, s.members).catch(() => ({})),
       ]);
-      setState(s);
+      setState((prev) => mergeState(prev, s));
       setEvents(ev);
       setScores(sc);
       setLoadError(null);
@@ -154,10 +178,12 @@ export function CircleDetail({ circleId }: { circleId: string }) {
   const started = config.started;
   const memberCount = members.length;
   const contributedCount = Object.values(contributions).filter(Boolean).length;
-  const allContributed = memberCount > 0 && contributedCount === memberCount;
+  // The recipient is exempt, so a round needs everyone else (n - 1).
+  const needed = started ? Math.max(memberCount - 1, 0) : memberCount;
+  const allContributed = started && needed > 0 && contributedCount === needed;
   const isRecipient = !!recipient && recipient === address;
   const full = memberCount >= config.max_members;
-  const progress = memberCount > 0 ? Math.min(contributedCount / memberCount, 1) : 0;
+  const progress = needed > 0 ? Math.min(contributedCount / needed, 1) : 0;
   const pending = action.status === "pending";
 
   return (
@@ -200,7 +226,7 @@ export function CircleDetail({ circleId }: { circleId: string }) {
               <div className="flex justify-between text-sm">
                 <span className="text-zinc-500">Contributions this round</span>
                 <span className="font-medium tabular-nums">
-                  {contributedCount} / {memberCount}
+                  {contributedCount} / {needed}
                 </span>
               </div>
               <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-zinc-100">
@@ -242,7 +268,7 @@ export function CircleDetail({ circleId }: { circleId: string }) {
                 variant="dark"
               />
             )}
-            {started && state.isMember && !state.contributedThisRound && (
+            {started && state.isMember && !isRecipient && !state.contributedThisRound && (
               <PrimaryButton
                 onClick={() => runAction("Contribute", () => contribute(circleId, address!))}
                 pending={pending}
@@ -258,7 +284,13 @@ export function CircleDetail({ circleId }: { circleId: string }) {
                 icon={Gift}
               />
             )}
-            {started && state.isMember && state.contributedThisRound && !isRecipient && (
+            {started && isRecipient && !allContributed && (
+              <span className="inline-flex items-center gap-1.5 text-sm font-medium text-accent">
+                <Gift className="h-4 w-4" strokeWidth={2.5} /> It&apos;s your turn —
+                you receive this round once everyone contributes
+              </span>
+            )}
+            {started && state.isMember && !isRecipient && state.contributedThisRound && (
               <span className="inline-flex items-center gap-1.5 text-sm font-medium text-accent">
                 <CheckCircle2 className="h-4 w-4" strokeWidth={2.5} /> You&apos;ve
                 contributed this round
@@ -293,7 +325,12 @@ export function CircleDetail({ circleId }: { circleId: string }) {
                 >
                   <div className="flex min-w-0 items-center gap-2">
                     {started &&
-                      (contributed ? (
+                      (m === recipient ? (
+                        <Gift
+                          className="h-4 w-4 shrink-0 text-accent"
+                          strokeWidth={2.5}
+                        />
+                      ) : contributed ? (
                         <CheckCircle2
                           className="h-4 w-4 shrink-0 text-accent"
                           strokeWidth={2.5}

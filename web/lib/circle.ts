@@ -28,6 +28,7 @@ const FRIENDLY: Record<string, string> = {
   RoundIncomplete: "Not everyone has contributed this round yet.",
   NotRecipient: "Only this round's recipient can claim the pot.",
   NotDefaulted: "This member has already contributed.",
+  IsRecipient: "It's your turn to receive — you don't contribute this round.",
 };
 
 function toContractError(code: string): ContractError {

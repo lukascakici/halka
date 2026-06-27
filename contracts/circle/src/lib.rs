@@ -55,6 +55,9 @@ pub enum Error {
     RoundIncomplete = 10,
     NotRecipient = 11,
     NotDefaulted = 12,
+    /// This round's recipient is exempt — they receive the pot, so they don't
+    /// contribute (and can't be slashed) this round.
+    IsRecipient = 13,
 }
 
 #[contractevent]
@@ -193,11 +196,17 @@ impl CircleContract {
         if !config.started {
             return Err(Error::NotStarted);
         }
-        if !Self::members(&env).contains(&member) {
+        let members = Self::members(&env);
+        if !members.contains(&member) {
             return Err(Error::NotMember);
         }
 
         let round = Self::round(&env);
+        // The round's recipient is exempt — they receive the pot, so there's no
+        // point contributing what they'd get straight back.
+        if Self::recipient_at(&members, round) == Some(member.clone()) {
+            return Err(Error::IsRecipient);
+        }
         let key = DataKey::Contributed(round, member.clone());
         if Self::has(&env, &key) {
             return Err(Error::AlreadyContributed);
@@ -239,7 +248,9 @@ impl CircleContract {
         let recipient = members.get((round - 1) % n).ok_or(Error::NotRecipient)?;
         recipient.require_auth();
 
-        if Self::contributed_count(&env, round, &members) != n {
+        // Everyone except the recipient contributes, so the round completes at
+        // n - 1 contributions.
+        if Self::contributed_count(&env, round, &members) != n - 1 {
             return Err(Error::RoundIncomplete);
         }
 
@@ -266,10 +277,15 @@ impl CircleContract {
         if !config.started {
             return Err(Error::NotStarted);
         }
-        if !Self::members(&env).contains(&member) {
+        let members = Self::members(&env);
+        if !members.contains(&member) {
             return Err(Error::NotMember);
         }
         let round = Self::round(&env);
+        // The recipient is exempt this round, so they can't be a defaulter.
+        if Self::recipient_at(&members, round) == Some(member.clone()) {
+            return Err(Error::IsRecipient);
+        }
         let key = DataKey::Contributed(round, member.clone());
         if Self::has(&env, &key) {
             return Err(Error::NotDefaulted);
@@ -310,12 +326,7 @@ impl CircleContract {
 
     /// The member who receives the pot in the given round.
     pub fn get_recipient(env: Env, round: u32) -> Result<Address, Error> {
-        let members = Self::members(&env);
-        let n = members.len();
-        if n == 0 || round == 0 {
-            return Err(Error::NotRecipient);
-        }
-        members.get((round - 1) % n).ok_or(Error::NotRecipient)
+        Self::recipient_at(&Self::members(&env), round).ok_or(Error::NotRecipient)
     }
 
     /* ----------------------------- internal ----------------------------- */
@@ -352,6 +363,15 @@ impl CircleContract {
             .instance()
             .get::<DataKey, bool>(key)
             .unwrap_or(false)
+    }
+
+    /// The recipient for a round: members rotate, one per round.
+    fn recipient_at(members: &Vec<Address>, round: u32) -> Option<Address> {
+        let n = members.len();
+        if n == 0 || round == 0 {
+            return None;
+        }
+        members.get((round - 1) % n)
     }
 
     fn contributed_count(env: &Env, round: u32, members: &Vec<Address>) -> u32 {
