@@ -16,7 +16,6 @@ import {
   Users,
 } from "lucide-react";
 import { useWallet } from "@/components/WalletProvider";
-import { CopyButton } from "@/components/CopyButton";
 import { NETWORK } from "@/lib/config";
 import { truncateAddress } from "@/lib/format";
 import {
@@ -34,6 +33,7 @@ import { fetchCircleEvents, type CircleEvent } from "@/lib/events";
 import { getScores } from "@/lib/reputation";
 import { WalletError } from "@/lib/wallet";
 import { pollUntilChanged } from "@/lib/async";
+import { CircleRing } from "./CircleRing";
 import { Panel, PrimaryButton, ActionStatus, type ActionState } from "./shared";
 
 const POLL_MS = 6000;
@@ -190,7 +190,7 @@ export function CircleDetail({ circleId }: { circleId: string }) {
     <div className="grid gap-6 lg:grid-cols-3">
       <div className="space-y-6 lg:col-span-2">
         <Link
-          href="/circles"
+          href="/"
           className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-500 hover:text-zinc-900"
         >
           <ArrowLeft className="h-4 w-4" strokeWidth={2} /> All circles
@@ -198,27 +198,41 @@ export function CircleDetail({ circleId }: { circleId: string }) {
 
         {/* Overview */}
         <Panel>
-          <div className="flex items-start justify-between">
-            <div>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent">
-                <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-                {started ? `Active · Round ${round}` : "Open to join"}
-              </span>
-              <h2 className="mt-3 text-2xl font-semibold tracking-tight">
-                {stroopsToXlm(config.contribution_amount)} XLM / round
-              </h2>
-              <p className="mt-1 text-sm text-zinc-500">
-                {memberCount} / {config.max_members} members ·{" "}
-                {stroopsToXlm(config.collateral_amount)} XLM collateral
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="text-xs font-medium text-zinc-500">Pot</p>
-              <p className="text-2xl font-semibold tabular-nums">
-                {stroopsToXlm(pot)}
-                <span className="ml-1 text-sm font-medium text-zinc-400">XLM</span>
-              </p>
-            </div>
+          <div className="flex items-start justify-between gap-3">
+            <span className="inline-flex items-center rounded-full bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent">
+              {started ? `Active · Round ${round}` : "Open to join"}
+            </span>
+            <a
+              href={NETWORK.explorerContract(circleId)}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={circleId}
+              className="inline-flex shrink-0 items-center gap-1 font-mono text-xs text-zinc-400 transition-colors hover:text-accent"
+            >
+              {truncateAddress(circleId, 4, 4)}
+              <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={2.5} />
+            </a>
+          </div>
+          <h2 className="mt-3 text-2xl font-semibold tracking-tight">
+            {stroopsToXlm(config.contribution_amount)} XLM / round
+          </h2>
+          <p className="mt-1 text-sm text-zinc-500">
+            {memberCount} / {config.max_members} members ·{" "}
+            {stroopsToXlm(config.collateral_amount)} XLM collateral
+          </p>
+
+          {/* The ring: members around the pot, recipient highlighted */}
+          <div className="my-6">
+            <CircleRing
+              members={members}
+              recipient={recipient}
+              contributions={contributions}
+              address={address}
+              started={started}
+              centerTop={started ? `Round ${round}` : "Pot"}
+              centerMain={stroopsToXlm(pot)}
+              centerSub="XLM in pot"
+            />
           </div>
 
           {started && (
@@ -308,6 +322,50 @@ export function CircleDetail({ circleId }: { circleId: string }) {
           </div>
         </Panel>
 
+        <ActionStatus action={action} onDismiss={() => setAction({ status: "idle" })} />
+      </div>
+
+      <div className="space-y-6">
+        {/* Activity — fixed height, scrolls internally so the page never grows */}
+        <Panel>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-zinc-500">Live activity</h3>
+            {events.length > 0 && (
+              <span className="text-xs text-zinc-400">{events.length}</span>
+            )}
+          </div>
+          <ul className="mt-3 max-h-64 space-y-0.5 overflow-y-auto pr-1">
+            {events.length === 0 && (
+              <li className="text-sm text-zinc-400">No on-chain activity yet.</li>
+            )}
+            {events.map((e) => (
+              <li key={e.id}>
+                <a
+                  href={NETWORK.explorerTx(e.txHash)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-zinc-50"
+                >
+                  <span className="text-sm font-medium capitalize">
+                    {e.name.replace("_", " ")}
+                  </span>
+                  {e.member && (
+                    <span className="truncate font-mono text-xs text-zinc-400">
+                      {truncateAddress(e.member, 4, 4)}
+                    </span>
+                  )}
+                  <span className="ml-auto shrink-0 text-xs text-zinc-400">
+                    {new Date(e.ledgerClosedAt).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+
         {/* Members */}
         <Panel>
           <p className="flex items-center gap-1.5 text-sm font-medium text-zinc-500">
@@ -342,7 +400,7 @@ export function CircleDetail({ circleId }: { circleId: string }) {
                         />
                       ))}
                     <span className="truncate font-mono text-sm">
-                      {truncateAddress(m, 6, 6)}
+                      {truncateAddress(m, 4, 4)}
                     </span>
                     {m === address && (
                       <span className="rounded-full bg-accent-soft px-1.5 py-0.5 text-xs font-medium text-accent">
@@ -356,7 +414,7 @@ export function CircleDetail({ circleId }: { circleId: string }) {
                       <span className="text-xs font-medium text-accent">recipient</span>
                     )}
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
                     <span
                       className="text-xs font-medium text-zinc-500"
                       title="Reputation score"
@@ -379,64 +437,6 @@ export function CircleDetail({ circleId }: { circleId: string }) {
               );
             })}
           </ul>
-        </Panel>
-
-        <ActionStatus action={action} onDismiss={() => setAction({ status: "idle" })} />
-      </div>
-
-      <div className="space-y-6">
-        {/* Activity */}
-        <Panel>
-          <h3 className="text-sm font-medium text-zinc-500">Live activity</h3>
-          <ul className="mt-4 space-y-3">
-            {events.length === 0 && (
-              <li className="text-sm text-zinc-400">No on-chain activity yet.</li>
-            )}
-            {events.map((e) => (
-              <li key={e.id} className="flex items-start gap-3">
-                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
-                <div className="min-w-0">
-                  <p className="text-sm font-medium capitalize">
-                    {e.name.replace("_", " ")}
-                  </p>
-                  {e.member && (
-                    <p className="font-mono text-xs text-zinc-500">
-                      {truncateAddress(e.member, 6, 6)}
-                    </p>
-                  )}
-                  <a
-                    href={NETWORK.explorerTx(e.txHash)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-zinc-400 hover:text-accent"
-                  >
-                    {new Date(e.ledgerClosedAt).toLocaleTimeString()}
-                  </a>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </Panel>
-
-        {/* Contract */}
-        <Panel>
-          <h3 className="text-sm font-medium text-zinc-500">Contract</h3>
-          <div className="mt-3 flex items-center justify-between">
-            <span className="font-mono text-xs text-zinc-600">
-              {truncateAddress(circleId, 6, 6)}
-            </span>
-            <div className="flex items-center gap-3">
-              <CopyButton value={circleId} label="Copy" />
-              <a
-                href={NETWORK.explorerContract(circleId)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-sm font-medium text-accent hover:text-accent-hover"
-              >
-                Explorer <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={2.5} />
-              </a>
-            </div>
-          </div>
         </Panel>
       </div>
     </div>

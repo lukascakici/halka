@@ -34,7 +34,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <WalletProvider>
           <Header />
-          <main className="mx-auto w-full max-w-5xl flex-1 px-5 py-12 sm:py-16">
+          <main className="mx-auto w-full max-w-5xl flex-1 px-5 pb-12 pt-6 sm:pt-8">
             {children}
           </main>
           <Footer />

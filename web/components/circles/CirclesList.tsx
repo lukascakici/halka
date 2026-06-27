@@ -220,8 +220,7 @@ function CircleCard({ id, address }: { id: string; address: string }) {
       {summary ? (
         <>
           <div className="flex items-center justify-between">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent">
-              <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+            <span className="inline-flex items-center rounded-full bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent">
               {summary.config.started ? `Round ${summary.round}` : "Open"}
             </span>
             <ArrowUpRight
