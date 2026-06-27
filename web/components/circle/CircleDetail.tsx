@@ -33,9 +33,16 @@ import {
 import { fetchCircleEvents, type CircleEvent } from "@/lib/events";
 import { getScores } from "@/lib/reputation";
 import { WalletError } from "@/lib/wallet";
+import { pollUntilChanged } from "@/lib/async";
 import { Panel, PrimaryButton, ActionStatus, type ActionState } from "./shared";
 
 const POLL_MS = 6000;
+
+/** A compact signature of the parts of state an action can change. */
+function circleSig(s: CircleState): string {
+  const contributed = Object.values(s.contributions).filter(Boolean).length;
+  return `${s.config.started}|${s.round}|${s.pot}|${s.members.length}|${s.contributedThisRound}|${contributed}`;
+}
 
 export function CircleDetail({ circleId }: { circleId: string }) {
   const { address, status, connect } = useWallet();
@@ -45,30 +52,29 @@ export function CircleDetail({ circleId }: { circleId: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [action, setAction] = useState<ActionState>({ status: "idle" });
 
-  const load = useCallback(
-    async () => {
-      if (!address) return;
-      try {
-        const s = await readCircleState(circleId, address);
-        const [ev, sc] = await Promise.all([
-          fetchCircleEvents(circleId).catch(() => [] as CircleEvent[]),
-          getScores(address, s.members).catch(() => ({})),
-        ]);
-        setState(s);
-        setEvents(ev);
-        setScores(sc);
-        setLoadError(null);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Could not load the circle.";
-        setLoadError(
-          /not found|account/i.test(msg)
-            ? "Your account isn't funded on Testnet yet. Fund it on the Wallet page first."
-            : msg,
-        );
-      }
-    },
-    [address, circleId],
-  );
+  const load = useCallback(async (): Promise<CircleState | null> => {
+    if (!address) return null;
+    try {
+      const s = await readCircleState(circleId, address);
+      const [ev, sc] = await Promise.all([
+        fetchCircleEvents(circleId).catch(() => [] as CircleEvent[]),
+        getScores(address, s.members).catch(() => ({})),
+      ]);
+      setState(s);
+      setEvents(ev);
+      setScores(sc);
+      setLoadError(null);
+      return s;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Could not load the circle.";
+      setLoadError(
+        /not found|account/i.test(msg)
+          ? "Your account isn't funded on Testnet yet. Fund it on the Wallet page first."
+          : msg,
+      );
+      return null;
+    }
+  }, [address, circleId]);
 
   useEffect(() => {
     if (status !== "connected") return;
@@ -80,11 +86,13 @@ export function CircleDetail({ circleId }: { circleId: string }) {
 
   const runAction = useCallback(
     async (label: string, fn: () => Promise<string>) => {
+      const before = state ? circleSig(state) : "";
       setAction({ status: "pending", label });
       try {
         const hash = await fn();
         setAction({ status: "success", hash, label });
-        await load();
+        // Keep re-reading until the RPC reflects the write (avoids stale UI).
+        await pollUntilChanged(load, circleSig, before);
       } catch (e) {
         let message = "The transaction failed.";
         if (e instanceof ContractError) message = e.message;
@@ -94,7 +102,7 @@ export function CircleDetail({ circleId }: { circleId: string }) {
         setAction({ status: "error", message });
       }
     },
-    [load],
+    [load, state],
   );
 
   if (status !== "connected") {

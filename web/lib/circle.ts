@@ -1,6 +1,7 @@
 import { Client as CircleClient, type CircleConfig } from "@circle-client";
 import { NETWORK } from "./config";
 import { signXdr } from "./wallet";
+import { withSeqRetry } from "./async";
 
 export { xlmToStroops, stroopsToXlm } from "./units";
 
@@ -152,21 +153,27 @@ async function submit(tx: {
 }
 
 export async function joinCircle(circleId: string, publicKey: string) {
-  return submit(await makeClient(circleId, publicKey).join({ member: publicKey }));
+  return withSeqRetry(async () =>
+    submit(await makeClient(circleId, publicKey).join({ member: publicKey })),
+  );
 }
 
 export async function startCircle(circleId: string, publicKey: string) {
-  return submit(await makeClient(circleId, publicKey).start());
+  return withSeqRetry(async () =>
+    submit(await makeClient(circleId, publicKey).start()),
+  );
 }
 
 export async function contribute(circleId: string, publicKey: string) {
-  return submit(
-    await makeClient(circleId, publicKey).contribute({ member: publicKey }),
+  return withSeqRetry(async () =>
+    submit(await makeClient(circleId, publicKey).contribute({ member: publicKey })),
   );
 }
 
 export async function claimPayout(circleId: string, publicKey: string) {
-  return submit(await makeClient(circleId, publicKey).claim_payout());
+  return withSeqRetry(async () =>
+    submit(await makeClient(circleId, publicKey).claim_payout()),
+  );
 }
 
 export async function slashMember(
@@ -174,5 +181,7 @@ export async function slashMember(
   publicKey: string,
   member: string,
 ) {
-  return submit(await makeClient(circleId, publicKey).slash({ member }));
+  return withSeqRetry(async () =>
+    submit(await makeClient(circleId, publicKey).slash({ member })),
+  );
 }

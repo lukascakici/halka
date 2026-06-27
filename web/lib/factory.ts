@@ -3,6 +3,7 @@ import { NETWORK, CONTRACTS } from "./config";
 import { signXdr } from "./wallet";
 import { xlmToStroops } from "./units";
 import { ContractError } from "./circle";
+import { withSeqRetry } from "./async";
 
 function makeFactory(publicKey: string): FactoryClient {
   return new FactoryClient({
@@ -30,15 +31,17 @@ export async function createCircle(
   collateralXlm: string,
   maxMembers: number,
 ): Promise<string> {
-  const tx = await makeFactory(publicKey).create_circle({
-    creator: publicKey,
-    contribution_amount: xlmToStroops(contributionXlm),
-    collateral_amount: xlmToStroops(collateralXlm),
-    max_members: maxMembers,
+  return withSeqRetry(async () => {
+    const tx = await makeFactory(publicKey).create_circle({
+      creator: publicKey,
+      contribution_amount: xlmToStroops(contributionXlm),
+      collateral_amount: xlmToStroops(collateralXlm),
+      max_members: maxMembers,
+    });
+    if (tx.result.isErr()) {
+      throw new ContractError("CreateFailed", tx.result.unwrapErr().message);
+    }
+    const sent = await tx.signAndSend();
+    return sent.result.unwrap();
   });
-  if (tx.result.isErr()) {
-    throw new ContractError("CreateFailed", tx.result.unwrapErr().message);
-  }
-  const sent = await tx.signAndSend();
-  return sent.result.unwrap();
 }

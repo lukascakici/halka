@@ -16,6 +16,7 @@ import {
   type CircleSummary,
 } from "@/lib/circle";
 import { WalletError } from "@/lib/wallet";
+import { pollUntilChanged } from "@/lib/async";
 import { Panel, PrimaryButton, ActionStatus, type ActionState } from "@/components/circle/shared";
 
 export function CirclesList() {
@@ -29,12 +30,14 @@ export function CirclesList() {
   const [collateral, setCollateral] = useState("2");
   const [maxMembers, setMaxMembers] = useState("5");
 
-  const load = useCallback(async () => {
-    if (!address) return;
+  const load = useCallback(async (): Promise<string[] | null> => {
+    if (!address) return null;
     setLoading(true);
     try {
-      setCircles(await listCircles(address));
+      const c = await listCircles(address);
+      setCircles(c);
       setError(null);
+      return c;
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not load circles.";
       setError(
@@ -42,6 +45,7 @@ export function CirclesList() {
           ? "Your account isn't funded on Testnet yet. Fund it on the Wallet page first."
           : msg,
       );
+      return null;
     } finally {
       setLoading(false);
     }
@@ -63,9 +67,11 @@ export function CirclesList() {
     if (!address || !valid) return;
     setAction({ status: "pending", label: "Create circle" });
     try {
+      const before = circles ? circles.join(",") : "";
       const hash = await createCircleTx(address, contribution, collateral, Number(maxMembers));
       setAction({ status: "success", hash, label: "Create circle" });
-      await load();
+      // Keep re-reading until the new circle shows up (RPC catch-up).
+      await pollUntilChanged(load, (c) => c.join(","), before);
     } catch (e) {
       let message = "Could not create the circle.";
       if (e instanceof ContractError) message = e.message;
@@ -74,7 +80,7 @@ export function CirclesList() {
       else if (e instanceof Error) message = e.message;
       setAction({ status: "error", message });
     }
-  }, [address, valid, contribution, collateral, maxMembers, load]);
+  }, [address, valid, contribution, collateral, maxMembers, load, circles]);
 
   if (status !== "connected") {
     return (
