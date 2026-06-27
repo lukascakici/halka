@@ -86,7 +86,7 @@ export function CirclesList() {
     return (
       <Panel>
         <div className="py-6 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent-soft">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent-soft dark:bg-accent/15">
             <Wallet className="h-6 w-6 text-accent" strokeWidth={2} />
           </div>
           <h2 className="mt-4 text-xl font-semibold tracking-tight">
@@ -97,7 +97,7 @@ export function CirclesList() {
           </p>
           <button
             onClick={() => connect().catch(() => {})}
-            className="mt-6 inline-flex h-12 items-center gap-2 rounded-full bg-zinc-950 px-6 text-sm font-medium text-white transition-colors hover:bg-zinc-800"
+            className="mt-6 inline-flex h-12 items-center gap-2 rounded-full bg-zinc-950 px-6 text-sm font-medium text-white transition-colors hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
           >
             Connect wallet
           </button>
@@ -162,7 +162,7 @@ export function CirclesList() {
               disabled={!valid}
             />
             {Number(collateral) < Number(contribution) && (
-              <p className="text-sm text-red-600">
+              <p className="text-sm text-red-600 dark:text-red-400">
                 Collateral must be at least the contribution.
               </p>
             )}
@@ -181,7 +181,7 @@ export function CirclesList() {
             <Loader2 className="h-4 w-4 animate-spin text-zinc-400" strokeWidth={2.5} />
           )}
         </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         {circles && circles.length === 0 && !loading && (
           <Panel>
             <p className="text-sm text-zinc-500">
@@ -215,16 +215,16 @@ function CircleCard({ id, address }: { id: string; address: string }) {
   return (
     <Link
       href={`/circle/${id}`}
-      className="group block rounded-2xl border border-zinc-200 p-5 transition-colors hover:border-zinc-300 hover:bg-zinc-50"
+      className="group block rounded-2xl border border-zinc-200 bg-white p-5 transition-colors hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700 dark:hover:bg-zinc-800/50"
     >
       {summary ? (
         <>
           <div className="flex items-center justify-between">
-            <span className="inline-flex items-center rounded-full bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent">
+            <span className="inline-flex items-center rounded-full bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent dark:bg-accent/15">
               {summary.config.started ? `Round ${summary.round}` : "Open"}
             </span>
             <ArrowUpRight
-              className="h-4 w-4 text-zinc-300 transition-colors group-hover:text-zinc-900"
+              className="h-4 w-4 text-zinc-300 transition-colors group-hover:text-zinc-900 dark:text-zinc-600 dark:group-hover:text-zinc-100"
               strokeWidth={2.5}
             />
           </div>

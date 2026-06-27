@@ -52,7 +52,7 @@ export function BalanceCard({ refreshNonce }: { refreshNonce: number }) {
   const unfunded = balance === null && !loading && !error;
 
   return (
-    <section className="rounded-2xl border border-zinc-200 p-6">
+    <section className="rounded-2xl border border-zinc-200 p-6 dark:border-zinc-800">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-zinc-500">Wallet balance</h2>
         <button
@@ -77,7 +77,7 @@ export function BalanceCard({ refreshNonce }: { refreshNonce: number }) {
           </div>
         ) : unfunded ? (
           <div>
-            <p className="text-2xl font-semibold tracking-tight text-zinc-900">
+            <p className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
               Account not funded
             </p>
             <p className="mt-1 text-sm text-zinc-500">
@@ -107,7 +107,7 @@ export function BalanceCard({ refreshNonce }: { refreshNonce: number }) {
       </div>
 
       {address && (
-        <div className="mt-5 flex items-center justify-between border-t border-zinc-100 pt-4">
+        <div className="mt-5 flex items-center justify-between border-t border-zinc-100 pt-4 dark:border-zinc-800">
           <span className="font-mono text-xs text-zinc-400 break-all">
             {address}
           </span>
@@ -116,7 +116,7 @@ export function BalanceCard({ refreshNonce }: { refreshNonce: number }) {
       )}
 
       {error && (
-        <p className="mt-3 text-sm text-red-600" role="alert">
+        <p className="mt-3 text-sm text-red-600 dark:text-red-400" role="alert">
           {error}
         </p>
       )}

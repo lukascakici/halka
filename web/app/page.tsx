@@ -7,7 +7,7 @@ export default function Home() {
         <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
           Save together. <span className="text-accent">On-chain.</span>
         </h1>
-        <p className="mt-4 text-lg leading-8 text-zinc-600">
+        <p className="mt-4 text-lg leading-8 text-zinc-600 dark:text-zinc-300">
           Halka turns the trusted savings circle into a transparent protocol on
           Stellar. Browse circles or start your own — each one is its own Soroban
           contract.

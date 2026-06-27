@@ -19,7 +19,9 @@ export function Panel({
   className?: string;
 }) {
   return (
-    <section className={`rounded-2xl border border-zinc-200 p-6 ${className}`}>
+    <section
+      className={`rounded-2xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900 ${className}`}
+    >
       {children}
     </section>
   );
@@ -42,7 +44,7 @@ export function PrimaryButton({
 }) {
   const colors =
     variant === "dark"
-      ? "bg-zinc-950 hover:bg-zinc-800"
+      ? "bg-zinc-950 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
       : variant === "danger"
         ? "bg-red-600 hover:bg-red-700"
         : "bg-accent hover:bg-accent-hover";
@@ -72,7 +74,7 @@ export function ActionStatus({
   if (action.status === "idle") return null;
   if (action.status === "pending") {
     return (
-      <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white p-4 text-sm">
+      <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
         <Loader2 className="h-4 w-4 animate-spin text-accent" strokeWidth={2.5} />
         {action.label} — confirm in your wallet…
       </div>
@@ -80,7 +82,7 @@ export function ActionStatus({
   }
   if (action.status === "error") {
     return (
-      <div className="flex items-start gap-2 rounded-xl bg-red-50 p-4 text-sm text-red-700">
+      <div className="flex items-start gap-2 rounded-xl bg-red-50 p-4 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
         <XCircle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.5} />
         <span className="flex-1">{action.message}</span>
         <button onClick={onDismiss} className="font-medium hover:underline">
@@ -90,7 +92,7 @@ export function ActionStatus({
     );
   }
   return (
-    <div className="rounded-xl bg-accent-soft p-4 text-sm">
+    <div className="rounded-xl bg-accent-soft p-4 text-sm dark:bg-accent/15">
       <div className="flex items-center gap-2 font-medium text-accent">
         <CheckCircle2 className="h-4 w-4" strokeWidth={2.5} /> {action.label} confirmed
       </div>

@@ -36,7 +36,7 @@ export function WalletMenu() {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex h-9 items-center gap-1.5 rounded-full border border-zinc-200 bg-white/50 px-3 font-mono text-sm text-zinc-700 transition-colors hover:bg-white"
+        className="inline-flex h-9 items-center gap-1.5 rounded-full border border-zinc-200 bg-white/50 px-3 font-mono text-sm text-zinc-700 transition-colors hover:bg-white dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-200 dark:hover:bg-zinc-800"
       >
         {truncateAddress(address)}
         <ChevronDown
@@ -46,7 +46,7 @@ export function WalletMenu() {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-[min(92vw,380px)] space-y-3 rounded-2xl border border-zinc-200 bg-white p-3 shadow-xl">
+        <div className="absolute right-0 mt-2 w-[min(92vw,380px)] space-y-3 rounded-2xl border border-zinc-200 bg-white p-3 shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
           <div className="flex items-center justify-between px-1">
             <span className="text-xs font-medium text-zinc-500">
               {NETWORK.label}

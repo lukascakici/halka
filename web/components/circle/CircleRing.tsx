@@ -29,7 +29,7 @@ export function CircleRing({
   return (
     <div className="relative mx-auto aspect-square w-full max-w-[300px]">
       {/* ring guide */}
-      <div className="absolute left-1/2 top-1/2 h-[76%] w-[76%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-zinc-200" />
+      <div className="absolute left-1/2 top-1/2 h-[76%] w-[76%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-zinc-200 dark:border-zinc-800" />
 
       {/* center */}
       <div className="absolute left-1/2 top-1/2 flex w-[44%] -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center">
@@ -56,10 +56,10 @@ export function CircleRing({
         const node = isRecipient
           ? "bg-accent text-white border-2 border-accent"
           : started && contributed
-            ? "border-2 border-accent bg-white text-zinc-900"
+            ? "border-2 border-accent bg-white text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100"
             : started
-              ? "border-2 border-zinc-200 bg-white text-zinc-400"
-              : "border-2 border-zinc-200 bg-white text-zinc-700";
+              ? "border-2 border-zinc-200 bg-white text-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-500"
+              : "border-2 border-zinc-200 bg-white text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300";
 
         return (
           <div
@@ -76,7 +76,7 @@ export function CircleRing({
               {m.slice(1, 3)}
             </div>
             {isYou && (
-              <span className="mt-1 rounded-full bg-accent-soft px-1.5 text-[10px] font-medium text-accent">
+              <span className="mt-1 rounded-full bg-accent-soft px-1.5 text-[10px] font-medium text-accent dark:bg-accent/15">
                 you
               </span>
             )}

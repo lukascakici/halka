@@ -60,10 +60,10 @@ export function SendForm({ onSuccess }: { onSuccess: () => void }) {
 
   if (tx.status === "success") {
     return (
-      <section className="rounded-2xl border border-zinc-200 p-6">
+      <section className="rounded-2xl border border-zinc-200 p-6 dark:border-zinc-800">
         <div className="flex items-center gap-2 text-accent">
           <CheckCircle2 className="h-5 w-5" strokeWidth={2.5} />
-          <h2 className="text-base font-semibold text-zinc-900">
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
             Contribution sent
           </h2>
         </div>
@@ -71,11 +71,11 @@ export function SendForm({ onSuccess }: { onSuccess: () => void }) {
           Your payment was confirmed on {NETWORK.label}.
         </p>
 
-        <div className="mt-5 rounded-xl bg-zinc-50 p-4">
+        <div className="mt-5 rounded-xl bg-zinc-50 p-4 dark:bg-zinc-800/50">
           <span className="text-xs font-medium text-zinc-500">
             Transaction hash
           </span>
-          <p className="mt-1 font-mono text-sm break-all text-zinc-900">
+          <p className="mt-1 font-mono text-sm break-all text-zinc-900 dark:text-zinc-100">
             {tx.hash}
           </p>
           <div className="mt-3 flex items-center gap-4">
@@ -95,7 +95,7 @@ export function SendForm({ onSuccess }: { onSuccess: () => void }) {
         <button
           type="button"
           onClick={reset}
-          className="mt-5 inline-flex h-10 items-center rounded-full border border-zinc-200 px-5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-50"
+          className="mt-5 inline-flex h-10 items-center rounded-full border border-zinc-200 px-5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-800"
         >
           Send another
         </button>
@@ -104,8 +104,8 @@ export function SendForm({ onSuccess }: { onSuccess: () => void }) {
   }
 
   return (
-    <section className="rounded-2xl border border-zinc-200 p-6">
-      <h2 className="text-base font-semibold text-zinc-900">
+    <section className="rounded-2xl border border-zinc-200 p-6 dark:border-zinc-800">
+      <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
         Send a contribution
       </h2>
       <p className="mt-1 text-sm text-zinc-500">
@@ -117,7 +117,7 @@ export function SendForm({ onSuccess }: { onSuccess: () => void }) {
         <div>
           <label
             htmlFor="destination"
-            className="block text-sm font-medium text-zinc-700"
+            className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
           >
             Recipient address
           </label>
@@ -128,15 +128,15 @@ export function SendForm({ onSuccess }: { onSuccess: () => void }) {
             placeholder="G…"
             spellCheck={false}
             autoComplete="off"
-            className="mt-1.5 w-full rounded-xl border border-zinc-200 px-4 py-3 font-mono text-sm outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
+            className="mt-1.5 w-full rounded-xl border border-zinc-200 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 font-mono text-sm outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
           />
           {trimmedDest.length > 0 && !destValid && (
-            <p className="mt-1.5 text-sm text-red-600">
+            <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">
               That doesn’t look like a valid Stellar address.
             </p>
           )}
           {selfSend && (
-            <p className="mt-1.5 text-sm text-red-600">
+            <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">
               You can’t send to your own address.
             </p>
           )}
@@ -145,7 +145,7 @@ export function SendForm({ onSuccess }: { onSuccess: () => void }) {
         <div>
           <label
             htmlFor="amount"
-            className="block text-sm font-medium text-zinc-700"
+            className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
           >
             Amount (XLM)
           </label>
@@ -158,14 +158,14 @@ export function SendForm({ onSuccess }: { onSuccess: () => void }) {
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0.00"
-            className="mt-1.5 w-full rounded-xl border border-zinc-200 px-4 py-3 text-sm tabular-nums outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
+            className="mt-1.5 w-full rounded-xl border border-zinc-200 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 text-sm tabular-nums outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
           />
         </div>
 
         <div>
           <label
             htmlFor="memo"
-            className="block text-sm font-medium text-zinc-700"
+            className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
           >
             Memo <span className="text-zinc-400">(optional)</span>
           </label>
@@ -175,13 +175,13 @@ export function SendForm({ onSuccess }: { onSuccess: () => void }) {
             onChange={(e) => setMemo(e.target.value)}
             maxLength={28}
             placeholder="e.g. June circle"
-            className="mt-1.5 w-full rounded-xl border border-zinc-200 px-4 py-3 text-sm outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
+            className="mt-1.5 w-full rounded-xl border border-zinc-200 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 text-sm outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
           />
         </div>
 
         {tx.status === "error" && (
           <div
-            className="flex items-start gap-2 rounded-xl bg-red-50 p-3 text-sm text-red-700"
+            className="flex items-start gap-2 rounded-xl bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300"
             role="alert"
           >
             <XCircle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.5} />
@@ -192,7 +192,7 @@ export function SendForm({ onSuccess }: { onSuccess: () => void }) {
         <button
           type="submit"
           disabled={!canSubmit}
-          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-accent text-sm font-semibold text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-400"
+          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-accent text-sm font-semibold text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-400 dark:disabled:bg-zinc-800 dark:disabled:text-zinc-600"
         >
           {tx.status === "submitting" ? (
             <>

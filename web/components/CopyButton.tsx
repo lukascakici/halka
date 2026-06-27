@@ -26,7 +26,7 @@ export function CopyButton({
     <button
       type="button"
       onClick={onCopy}
-      className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900"
+      className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
       aria-label={label}
     >
       {copied ? (
