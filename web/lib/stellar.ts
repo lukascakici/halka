@@ -54,8 +54,24 @@ export interface SendPaymentParams {
   sign: (xdr: string) => Promise<string>;
 }
 
+/** Minimum starting balance (XLM) required to create a brand-new account. */
+const MIN_ACCOUNT_BALANCE = 1;
+
+/** Returns true if the destination account already exists on the network. */
+async function accountExists(address: string): Promise<boolean> {
+  try {
+    await server.loadAccount(address);
+    return true;
+  } catch (e: unknown) {
+    if (isNotFound(e)) return false;
+    throw e;
+  }
+}
+
 /**
- * Build, sign, and submit a native XLM payment on Testnet.
+ * Build, sign, and submit a native XLM transfer on Testnet.
+ * - Existing destination  -> a normal payment.
+ * - New destination       -> createAccount, so sending to a fresh address works.
  * Returns the transaction hash on success.
  */
 export async function sendPayment({
@@ -66,18 +82,30 @@ export async function sendPayment({
   sign,
 }: SendPaymentParams): Promise<string> {
   const account = await server.loadAccount(source);
+  const destExists = await accountExists(destination);
+
+  if (!destExists && Number(amount) < MIN_ACCOUNT_BALANCE) {
+    throw new Error(
+      `This address has no account yet. Send at least ${MIN_ACCOUNT_BALANCE} XLM to create it.`,
+    );
+  }
+
+  const operation = destExists
+    ? Operation.payment({
+        destination,
+        asset: Asset.native(),
+        amount,
+      })
+    : Operation.createAccount({
+        destination,
+        startingBalance: amount,
+      });
 
   const builder = new TransactionBuilder(account, {
     fee: BASE_FEE,
     networkPassphrase: NETWORK.passphrase,
   })
-    .addOperation(
-      Operation.payment({
-        destination,
-        asset: Asset.native(),
-        amount,
-      }),
-    )
+    .addOperation(operation)
     .setTimeout(180);
 
   if (memo && memo.trim()) {
