@@ -1,17 +1,20 @@
 #![no_std]
 
-//! Halka — Circle contract (Level 2)
+//! Halka — Circle contract (Level 3)
 //!
-//! A single rotating savings circle. Members join while the circle is open,
-//! the admin starts it (locking membership), and each round every member
-//! contributes a fixed amount of a token into the shared pot.
-//!
-//! Levels 3+ extend this with payout rotation, collateral, defaults, and a
-//! separate Factory/Reputation system.
+//! A rotating savings circle. Members join (posting collateral), the admin
+//! starts it, and each round every member contributes a fixed amount. When all
+//! have contributed, the round's recipient claims the pot and the circle rotates
+//! to the next member. Reliability and defaults are reported to a shared
+//! [`reputation`] contract (inter-contract communication).
 
+use interfaces::ReputationClient;
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, token, Address, Env, Vec,
 };
+
+const REP_CONTRIBUTE: i64 = 1;
+const REP_DEFAULT: i64 = -3;
 
 #[contracttype]
 #[derive(Clone)]
@@ -29,7 +32,9 @@ pub enum DataKey {
 pub struct CircleConfig {
     pub admin: Address,
     pub token: Address,
+    pub reputation: Address,
     pub contribution_amount: i128,
+    pub collateral_amount: i128,
     pub max_members: u32,
     pub started: bool,
 }
@@ -47,15 +52,9 @@ pub enum Error {
     NotStarted = 7,
     AlreadyStarted = 8,
     AlreadyContributed = 9,
-}
-
-/* ------------------------------ events ------------------------------ */
-
-#[contractevent]
-#[derive(Clone)]
-pub struct Initialized {
-    #[topic]
-    pub admin: Address,
+    RoundIncomplete = 10,
+    NotRecipient = 11,
+    NotDefaulted = 12,
 }
 
 #[contractevent]
@@ -80,31 +79,53 @@ pub struct Contributed {
     pub round: u32,
 }
 
+#[contractevent]
+#[derive(Clone)]
+pub struct PaidOut {
+    #[topic]
+    pub recipient: Address,
+    pub amount: i128,
+    pub round: u32,
+}
+
+#[contractevent]
+#[derive(Clone)]
+pub struct Slashed {
+    #[topic]
+    pub member: Address,
+    pub round: u32,
+}
+
 #[contract]
 pub struct CircleContract;
 
 #[contractimpl]
 impl CircleContract {
-    /// Create the circle. Must be called once by the admin.
+    /// Create the circle. Called once (by the admin, or by the Factory on the
+    /// admin's behalf).
     pub fn initialize(
         env: Env,
         admin: Address,
         token: Address,
+        reputation: Address,
         contribution_amount: i128,
+        collateral_amount: i128,
         max_members: u32,
     ) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::Config) {
             return Err(Error::AlreadyInitialized);
         }
-        if contribution_amount <= 0 || max_members == 0 {
+        if contribution_amount <= 0 || collateral_amount < 0 || max_members < 2 {
             return Err(Error::InvalidParams);
         }
         admin.require_auth();
 
         let config = CircleConfig {
-            admin: admin.clone(),
+            admin,
             token,
+            reputation,
             contribution_amount,
+            collateral_amount,
             max_members,
             started: false,
         };
@@ -114,12 +135,10 @@ impl CircleContract {
             .set(&DataKey::Members, &Vec::<Address>::new(&env));
         env.storage().instance().set(&DataKey::Round, &0u32);
         env.storage().instance().set(&DataKey::Pot, &0i128);
-
-        Initialized { admin }.publish(&env);
         Ok(())
     }
 
-    /// Join the circle while it is still open (before it starts).
+    /// Join the circle (before it starts), posting collateral.
     pub fn join(env: Env, member: Address) -> Result<(), Error> {
         member.require_auth();
         let config = Self::load_config(&env)?;
@@ -127,17 +146,23 @@ impl CircleContract {
             return Err(Error::AlreadyStarted);
         }
 
-        let mut members: Vec<Address> = env
-            .storage()
-            .instance()
-            .get(&DataKey::Members)
-            .unwrap_or(Vec::new(&env));
+        let mut members = Self::members(&env);
         if members.contains(&member) {
             return Err(Error::AlreadyMember);
         }
         if members.len() >= config.max_members {
             return Err(Error::CircleFull);
         }
+
+        if config.collateral_amount > 0 {
+            let this = env.current_contract_address();
+            token::Client::new(&env, &config.token).transfer(
+                &member,
+                &this,
+                &config.collateral_amount,
+            );
+        }
+
         members.push_back(member.clone());
         env.storage().instance().set(&DataKey::Members, &members);
 
@@ -160,46 +185,34 @@ impl CircleContract {
         Ok(())
     }
 
-    /// Contribute the fixed amount for the current round.
-    /// Transfers tokens from the member into the contract's pot.
+    /// Contribute the fixed amount for the current round. Rewards reputation.
     pub fn contribute(env: Env, member: Address) -> Result<(), Error> {
         member.require_auth();
         let config = Self::load_config(&env)?;
         if !config.started {
             return Err(Error::NotStarted);
         }
-
-        let members: Vec<Address> = env
-            .storage()
-            .instance()
-            .get(&DataKey::Members)
-            .unwrap_or(Vec::new(&env));
-        if !members.contains(&member) {
+        if !Self::members(&env).contains(&member) {
             return Err(Error::NotMember);
         }
 
-        let round: u32 = env.storage().instance().get(&DataKey::Round).unwrap_or(0);
-        let contributed_key = DataKey::Contributed(round, member.clone());
-        if env
-            .storage()
-            .instance()
-            .get::<DataKey, bool>(&contributed_key)
-            .unwrap_or(false)
-        {
+        let round = Self::round(&env);
+        let key = DataKey::Contributed(round, member.clone());
+        if Self::has(&env, &key) {
             return Err(Error::AlreadyContributed);
         }
 
-        // Move the contribution into the pot (requires the member's auth,
-        // covered by the transaction source signature).
-        let token_client = token::Client::new(&env, &config.token);
-        let pot_address = env.current_contract_address();
-        token_client.transfer(&member, &pot_address, &config.contribution_amount);
+        let this = env.current_contract_address();
+        token::Client::new(&env, &config.token).transfer(
+            &member,
+            &this,
+            &config.contribution_amount,
+        );
+        env.storage().instance().set(&key, &true);
+        Self::add_pot(&env, config.contribution_amount);
 
-        env.storage().instance().set(&contributed_key, &true);
-        let pot: i128 = env.storage().instance().get(&DataKey::Pot).unwrap_or(0);
-        env.storage()
-            .instance()
-            .set(&DataKey::Pot, &(pot + config.contribution_amount));
+        // Inter-contract: reward reliability in the shared reputation contract.
+        ReputationClient::new(&env, &config.reputation).record(&this, &member, &REP_CONTRIBUTE);
 
         Contributed {
             member,
@@ -210,6 +223,68 @@ impl CircleContract {
         Ok(())
     }
 
+    /// The current round's recipient claims the pot, rotating to the next round.
+    pub fn claim_payout(env: Env) -> Result<(), Error> {
+        let config = Self::load_config(&env)?;
+        if !config.started {
+            return Err(Error::NotStarted);
+        }
+        let members = Self::members(&env);
+        let n = members.len();
+        if n == 0 {
+            return Err(Error::NotRecipient);
+        }
+        let round = Self::round(&env);
+        let recipient = members.get((round - 1) % n).ok_or(Error::NotRecipient)?;
+        recipient.require_auth();
+
+        if Self::contributed_count(&env, round, &members) != n {
+            return Err(Error::RoundIncomplete);
+        }
+
+        let pot = Self::pot(&env);
+        let this = env.current_contract_address();
+        token::Client::new(&env, &config.token).transfer(&this, &recipient, &pot);
+        env.storage().instance().set(&DataKey::Pot, &0i128);
+        env.storage().instance().set(&DataKey::Round, &(round + 1));
+
+        PaidOut {
+            recipient,
+            amount: pot,
+            round,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    /// Admin slashes a member who didn't contribute this round: their collateral
+    /// covers the missed contribution and their reputation drops.
+    pub fn slash(env: Env, member: Address) -> Result<(), Error> {
+        let config = Self::load_config(&env)?;
+        config.admin.require_auth();
+        if !config.started {
+            return Err(Error::NotStarted);
+        }
+        if !Self::members(&env).contains(&member) {
+            return Err(Error::NotMember);
+        }
+        let round = Self::round(&env);
+        let key = DataKey::Contributed(round, member.clone());
+        if Self::has(&env, &key) {
+            return Err(Error::NotDefaulted);
+        }
+
+        // The collateral already held by the contract covers the contribution.
+        env.storage().instance().set(&key, &true);
+        Self::add_pot(&env, config.contribution_amount);
+
+        let this = env.current_contract_address();
+        ReputationClient::new(&env, &config.reputation).record(&this, &member, &REP_DEFAULT);
+
+        Slashed { member, round }.publish(&env);
+        Ok(())
+    }
+
     /* ----------------------------- reads ----------------------------- */
 
     pub fn get_config(env: Env) -> Result<CircleConfig, Error> {
@@ -217,25 +292,29 @@ impl CircleContract {
     }
 
     pub fn get_members(env: Env) -> Vec<Address> {
-        env.storage()
-            .instance()
-            .get(&DataKey::Members)
-            .unwrap_or(Vec::new(&env))
+        Self::members(&env)
     }
 
     pub fn get_round(env: Env) -> u32 {
-        env.storage().instance().get(&DataKey::Round).unwrap_or(0)
+        Self::round(&env)
     }
 
     pub fn get_pot(env: Env) -> i128 {
-        env.storage().instance().get(&DataKey::Pot).unwrap_or(0)
+        Self::pot(&env)
     }
 
     pub fn has_contributed(env: Env, round: u32, member: Address) -> bool {
-        env.storage()
-            .instance()
-            .get(&DataKey::Contributed(round, member))
-            .unwrap_or(false)
+        Self::has(&env, &DataKey::Contributed(round, member))
+    }
+
+    /// The member who receives the pot in the given round.
+    pub fn get_recipient(env: Env, round: u32) -> Result<Address, Error> {
+        let members = Self::members(&env);
+        let n = members.len();
+        if n == 0 || round == 0 {
+            return Err(Error::NotRecipient);
+        }
+        members.get((round - 1) % n).ok_or(Error::NotRecipient)
     }
 
     /* ----------------------------- internal ----------------------------- */
@@ -245,6 +324,43 @@ impl CircleContract {
             .instance()
             .get(&DataKey::Config)
             .ok_or(Error::NotInitialized)
+    }
+
+    fn members(env: &Env) -> Vec<Address> {
+        env.storage()
+            .instance()
+            .get(&DataKey::Members)
+            .unwrap_or(Vec::new(env))
+    }
+
+    fn round(env: &Env) -> u32 {
+        env.storage().instance().get(&DataKey::Round).unwrap_or(0)
+    }
+
+    fn pot(env: &Env) -> i128 {
+        env.storage().instance().get(&DataKey::Pot).unwrap_or(0)
+    }
+
+    fn add_pot(env: &Env, amount: i128) {
+        let pot = Self::pot(env) + amount;
+        env.storage().instance().set(&DataKey::Pot, &pot);
+    }
+
+    fn has(env: &Env, key: &DataKey) -> bool {
+        env.storage()
+            .instance()
+            .get::<DataKey, bool>(key)
+            .unwrap_or(false)
+    }
+
+    fn contributed_count(env: &Env, round: u32, members: &Vec<Address>) -> u32 {
+        let mut count = 0u32;
+        for m in members.iter() {
+            if Self::has(env, &DataKey::Contributed(round, m)) {
+                count += 1;
+            }
+        }
+        count
     }
 }
 

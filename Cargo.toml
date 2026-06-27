@@ -15,7 +15,9 @@ strip = "symbols"
 debug-assertions = false
 panic = "abort"
 codegen-units = 1
-lto = true
+# lto is disabled: contracts depend on each other's crates for typed clients,
+# and cross-crate LTO of cdylib contracts fails to load bitcode.
+lto = false
 
 # For more information about this profile see https://developers.stellar.org/docs/build/smart-contracts/example-contracts/logging#cargotoml-profile
 [profile.release-with-logs]

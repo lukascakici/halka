@@ -289,6 +289,8 @@ dependencies = [
 name = "circle"
 version = "0.0.0"
 dependencies = [
+ "interfaces",
+ "reputation",
  "soroban-sdk",
 ]
 
@@ -649,6 +651,8 @@ checksum = "40404c3f5f511ec4da6fe866ddf6a717c309fdbb69fbbad7b0f3edab8f2e835f"
 name = "factory"
 version = "0.0.0"
 dependencies = [
+ "interfaces",
+ "reputation",
  "soroban-sdk",
 ]
 
@@ -867,6 +871,13 @@ name = "indexmap-nostd"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8e04e2fd2b8188ea827b32ef11de88377086d690286ab35747ef7f9bf3ccb590"
+
+[[package]]
+name = "interfaces"
+version = "0.0.0"
+dependencies = [
+ "soroban-sdk",
+]
 
 [[package]]
 name = "itertools"

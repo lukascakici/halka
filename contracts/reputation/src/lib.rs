@@ -2,10 +2,10 @@
 
 //! Halka — Reputation contract (Level 3)
 //!
-//! A shared, cross-circle trust/credit score. Only circle contracts that the
-//! admin (the Factory) has authorized may write to it, so reputation can't be
-//! forged. Each `Circle` calls `record` on payout (positive) or default
-//! (negative), demonstrating inter-contract communication.
+//! A shared, cross-circle trust/credit score. The admin sets a trusted Factory;
+//! the Factory authorizes each circle it deploys; only authorized circles may
+//! write reputation. This demonstrates inter-contract communication and makes
+//! the score impossible to forge.
 
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, Address, Env,
@@ -15,6 +15,7 @@ use soroban_sdk::{
 #[derive(Clone)]
 pub enum DataKey {
     Admin,
+    Factory,
     /// Whether `circle` is allowed to write reputation.
     Authorized(Address),
     /// A member's accumulated score.
@@ -27,7 +28,8 @@ pub enum DataKey {
 pub enum Error {
     AlreadyInitialized = 1,
     NotInitialized = 2,
-    NotAuthorized = 3,
+    FactoryNotSet = 3,
+    NotAuthorized = 4,
 }
 
 #[contractevent]
@@ -44,7 +46,7 @@ pub struct ReputationContract;
 
 #[contractimpl]
 impl ReputationContract {
-    /// Set the admin (the Factory) that may authorize circles.
+    /// Set the admin account that may configure the Factory.
     pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(Error::AlreadyInitialized);
@@ -54,10 +56,22 @@ impl ReputationContract {
         Ok(())
     }
 
-    /// Authorize a circle contract to write reputation. Admin only.
-    pub fn authorize_circle(env: Env, circle: Address) -> Result<(), Error> {
+    /// Point reputation at the Factory contract that will authorize circles.
+    pub fn set_factory(env: Env, factory: Address) -> Result<(), Error> {
         let admin = Self::admin(&env)?;
         admin.require_auth();
+        env.storage().instance().set(&DataKey::Factory, &factory);
+        Ok(())
+    }
+
+    /// Authorize a circle to write reputation. Callable only by the Factory.
+    pub fn authorize_circle(env: Env, circle: Address) -> Result<(), Error> {
+        let factory: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Factory)
+            .ok_or(Error::FactoryNotSet)?;
+        factory.require_auth();
         env.storage()
             .persistent()
             .set(&DataKey::Authorized(circle), &true);
@@ -65,7 +79,7 @@ impl ReputationContract {
     }
 
     /// Record a reputation change for `member`. Callable only by an authorized
-    /// circle; `reporter` must be the calling circle (verified via auth).
+    /// circle; `reporter` is the calling circle (verified via auth).
     pub fn record(env: Env, reporter: Address, member: Address, delta: i64) -> Result<i64, Error> {
         reporter.require_auth();
         let authorized: bool = env
