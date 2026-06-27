@@ -28,17 +28,11 @@ fn test_create_circle_full_flow() {
     rep.set_factory(&factory_id);
 
     let wasm_hash = env.deployer().upload_contract_wasm(circle_wasm::WASM);
-    factory.initialize(
-        &Address::generate(&env),
-        &rep_id,
-        &token_id,
-        &wasm_hash,
-        &200i128,
-    );
+    factory.initialize(&Address::generate(&env), &rep_id, &token_id, &wasm_hash);
 
     // Create a circle through the factory.
     let creator = Address::generate(&env);
-    let circle_addr = factory.create_circle(&creator, &100i128, &3u32);
+    let circle_addr = factory.create_circle(&creator, &100i128, &200i128, &3u32);
 
     assert_eq!(factory.get_circle_count(), 1);
     assert_eq!(
@@ -64,9 +58,9 @@ fn test_double_initialize_fails() {
     let factory = FactoryContractClient::new(&env, &factory_id);
     let a = Address::generate(&env);
     let wasm = soroban_sdk::BytesN::from_array(&env, &[0u8; 32]);
-    factory.initialize(&a, &a, &a, &wasm, &0i128);
+    factory.initialize(&a, &a, &a, &wasm);
     assert_eq!(
-        factory.try_initialize(&a, &a, &a, &wasm, &0i128),
+        factory.try_initialize(&a, &a, &a, &wasm),
         Err(Ok(Error::AlreadyInitialized))
     );
 }

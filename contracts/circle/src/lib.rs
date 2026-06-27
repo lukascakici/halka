@@ -115,7 +115,8 @@ impl CircleContract {
         if env.storage().instance().has(&DataKey::Config) {
             return Err(Error::AlreadyInitialized);
         }
-        if contribution_amount <= 0 || collateral_amount < 0 || max_members < 2 {
+        // Collateral must cover a missed contribution so `slash` stays solvent.
+        if contribution_amount <= 0 || collateral_amount < contribution_amount || max_members < 2 {
             return Err(Error::InvalidParams);
         }
         admin.require_auth();

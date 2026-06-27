@@ -18,7 +18,6 @@ pub enum DataKey {
     Reputation,
     Token,
     CircleWasm,
-    Collateral,
     Count,
     Circles,
 }
@@ -47,20 +46,16 @@ pub struct FactoryContract;
 #[contractimpl]
 impl FactoryContract {
     /// Configure the factory with the shared reputation contract, the
-    /// contribution token, the Circle wasm hash to deploy, and the collateral.
+    /// contribution token, and the Circle wasm hash to deploy.
     pub fn initialize(
         env: Env,
         admin: Address,
         reputation: Address,
         token: Address,
         circle_wasm: BytesN<32>,
-        collateral: i128,
     ) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(Error::AlreadyInitialized);
-        }
-        if collateral < 0 {
-            return Err(Error::InvalidParams);
         }
         admin.require_auth();
 
@@ -69,7 +64,6 @@ impl FactoryContract {
         s.set(&DataKey::Reputation, &reputation);
         s.set(&DataKey::Token, &token);
         s.set(&DataKey::CircleWasm, &circle_wasm);
-        s.set(&DataKey::Collateral, &collateral);
         s.set(&DataKey::Count, &0u32);
         s.set(&DataKey::Circles, &Vec::<Address>::new(&env));
         Ok(())
@@ -80,6 +74,7 @@ impl FactoryContract {
         env: Env,
         creator: Address,
         contribution_amount: i128,
+        collateral_amount: i128,
         max_members: u32,
     ) -> Result<Address, Error> {
         creator.require_auth();
@@ -87,7 +82,6 @@ impl FactoryContract {
         let reputation: Address = s.get(&DataKey::Reputation).ok_or(Error::NotInitialized)?;
         let token: Address = s.get(&DataKey::Token).ok_or(Error::NotInitialized)?;
         let wasm: BytesN<32> = s.get(&DataKey::CircleWasm).ok_or(Error::NotInitialized)?;
-        let collateral: i128 = s.get(&DataKey::Collateral).unwrap_or(0);
         let count: u32 = s.get(&DataKey::Count).unwrap_or(0);
 
         // Deploy a fresh Circle instance with a deterministic salt.
@@ -102,7 +96,7 @@ impl FactoryContract {
             &token,
             &reputation,
             &contribution_amount,
-            &collateral,
+            &collateral_amount,
             &max_members,
         );
         ReputationClient::new(&env, &reputation).authorize_circle(&circle);
