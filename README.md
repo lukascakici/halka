@@ -46,6 +46,11 @@ dark mode.
 See [`docs/deployments.md`](docs/deployments.md) for an example deployed circle,
 deploy transaction hashes, and explorer links.
 
+### Screenshots
+| Mobile responsive | CI/CD pipeline | Test output |
+| --- | --- | --- |
+| ![Mobile responsive](docs/screenshots/mobile.png) | ![CI/CD pipeline](docs/screenshots/ci.png) | ![Test output](docs/screenshots/tests.png) |
+
 ---
 
 ## Level 2 — Yellow Belt
