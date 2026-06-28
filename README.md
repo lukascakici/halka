@@ -6,7 +6,45 @@ Halka turns the trusted savings circle — known as _altın günü_ in Turkey, _
 
 **Live demo:** [halka-kappa.vercel.app](https://halka-kappa.vercel.app/)
 
+[![CI](https://github.com/lukascakici/halka/actions/workflows/ci.yml/badge.svg)](https://github.com/lukascakici/halka/actions/workflows/ci.yml)
+
 This repository is built level-by-level for the **Stellar Journey to Mastery** builder challenge.
+
+---
+
+## Level 3 — Orange Belt
+
+A production-shaped, multi-contract dApp: a `Factory` that deploys `Circle`
+instances and a shared `Reputation` ledger, wired together with **inter-contract
+communication**, plus CI/CD, tests on both sides, and a mobile-responsive UI with
+dark mode.
+
+### Features
+- **Three Soroban contracts** — `Factory` (deploys & registers circles),
+  `Circle` (savings round logic), `Reputation` (factory-gated on-chain score)
+- **Inter-contract communication** — the Factory deploys each `Circle` and
+  authorizes it in `Reputation`; each `Circle` records contributions / defaults
+  back to `Reputation`. Calls go through `#[contractclient]` interface traits.
+- **Payout rotation (classic ROSCA)** — each round's recipient receives the pot
+  and is **exempt** from contributing that round; pot = `(N − 1) × contribution`
+- **Live ring visualization** of the circle — members on a ring, the round's
+  recipient highlighted, pot and round in the center
+- **Reliable on-chain UX** under Soroban RPC read-after-write lag — bad-sequence
+  retries, poll-until-changed reads, and monotonic state merging (no flicker)
+- **Mobile responsive**, **dark mode** (system-aware), liquid-glass top bar
+- **CI/CD** (GitHub Actions) — Rust fmt/clippy/test + wasm build, and web
+  lint/test/build on every push and PR
+
+### Deployed contracts (Testnet)
+| Contract | Address |
+| --- | --- |
+| `Factory` | `CBYJLPQPQL7SYVKO4QYYQ5H37TYW2PSCRE3ENHHNFPWDGT7Q6FFGCTOH` |
+| `Reputation` | `CD65FDOB75TYWGEDCJKAJW7TQWTRANXI5O43LMOQCMS5ZZN5RNDRWF3L` |
+| Token (native XLM SAC) | `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` |
+| `Circle` wasm hash | `29f2f2007bbc73ccb8bcb06ce31d95031a9c0eee0cfdc6b9384d62628a24e9f1` |
+
+See [`docs/deployments.md`](docs/deployments.md) for an example deployed circle,
+deploy transaction hashes, and explorer links.
 
 ---
 
@@ -83,11 +121,30 @@ Open [http://localhost:3000](http://localhost:3000), then:
 
 ### Smart contracts
 ```bash
-cd contracts
-cargo test          # run the contract test suite
-stellar contract build
+cargo test                                    # run the contract test suite
+stellar contract build                        # or: cargo build --target wasm32v1-none --release
 ```
-Contracts live in `contracts/circle`. Generated TypeScript bindings live in `web/packages/circle-client`.
+Contracts live in `contracts/{circle,factory,reputation,interfaces}`. Generated
+TypeScript bindings live in `web/packages/*-client`.
+
+---
+
+## Testing
+
+Both sides are covered, and the same commands run in CI on every push / PR
+(see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+
+```bash
+# Contracts (Rust) — 15 tests across circle / factory / reputation
+cargo test
+
+# Web (TypeScript) — 19 unit tests for units, formatting, and RPC-retry logic
+cd web && npm test
+```
+
+The web suite uses [Vitest](https://vitest.dev/) and tests pure logic:
+stroop ↔ XLM conversion, address/amount formatting, and the bad-sequence
+retry / poll-until-changed helpers that keep the UI in sync with Soroban RPC.
 
 ---
 
@@ -98,5 +155,5 @@ Halka runs entirely on the **Stellar Testnet** for Levels 1–3. Mainnet is part
 ## Roadmap
 - **L1 — White Belt:** wallet, balance, payments ✓
 - **L2 — Yellow Belt:** multi-wallet + `Circle` Soroban contract with live events ✓
-- **L3 — Orange Belt:** `Factory` + `Reputation` contracts, payout rotation, tests, CI/CD, mobile
+- **L3 — Orange Belt:** `Factory` + `Reputation` contracts, payout rotation, tests, CI/CD, mobile ✓
 - **L4+:** real users, anchor fiat ramps, yield, portable on-chain credit score
