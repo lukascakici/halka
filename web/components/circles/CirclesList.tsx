@@ -92,7 +92,7 @@ export function CirclesList() {
           <h2 className="mt-4 text-xl font-semibold tracking-tight">
             Connect your wallet
           </h2>
-          <p className="mx-auto mt-2 max-w-md text-zinc-600">
+          <p className="mx-auto mt-2 max-w-md text-zinc-600 dark:text-zinc-400">
             Connect to browse circles and start your own on {NETWORK.label}.
           </p>
           <button
@@ -118,7 +118,7 @@ export function CirclesList() {
           </p>
           <div className="mt-4 space-y-4">
             <label className="block">
-              <span className="text-sm font-medium text-zinc-700">
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Contribution / round (XLM)
               </span>
               <input
@@ -131,7 +131,7 @@ export function CirclesList() {
               />
             </label>
             <label className="block">
-              <span className="text-sm font-medium text-zinc-700">
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Collateral (XLM)
               </span>
               <input
@@ -144,7 +144,7 @@ export function CirclesList() {
               />
             </label>
             <label className="block">
-              <span className="text-sm font-medium text-zinc-700">Max members</span>
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Max members</span>
               <input
                 type="number"
                 min="2"
