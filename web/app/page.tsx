@@ -1,5 +1,4 @@
 import { CirclesList } from "@/components/circles/CirclesList";
-import { HowItWorks } from "@/components/HowItWorks";
 
 export default function Home() {
   return (
@@ -17,7 +16,6 @@ export default function Home() {
       <div className="mt-10">
         <CirclesList />
       </div>
-      <HowItWorks />
     </>
   );
 }

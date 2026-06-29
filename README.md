@@ -12,6 +12,54 @@ This repository is built level-by-level for the **Stellar Journey to Mastery** b
 
 ---
 
+## Level 4 — Green Belt
+
+A production-ready MVP: real users, analytics & performance monitoring, in-app
+feedback collection, and a guided onboarding experience — on top of the
+multi-contract architecture from Level 3.
+
+### Features
+- **Analytics & monitoring** — [Vercel Web Analytics](https://vercel.com/docs/analytics)
+  (privacy-friendly page + custom-event tracking) and
+  [Speed Insights](https://vercel.com/docs/speed-insights) (real-user performance)
+- **In-app feedback** — a flat, no-friction feedback widget (1–5 usefulness
+  rating + optional message and email). Submissions are recorded as analytics
+  events for a summary, and optionally forwarded to a team webhook
+  (`FEEDBACK_WEBHOOK_URL`)
+- **Guided onboarding** — a "How Halka works" walkthrough explaining the savings
+  circle in four steps, plus a clear connect-wallet first step
+- **Wrong-network guard** — a banner prompts users to switch to Testnet instead
+  of failing silently
+- **Production-ready UX** — mobile responsive, dark mode, loading + error states
+  on every on-chain action, and reliable state sync under Soroban RPC lag
+
+### Architecture
+```
+web/                       Next.js 16 App Router (TypeScript, Tailwind v4)
+  app/
+    page.tsx               Home — circles + onboarding
+    circle/[id]/           Circle detail (ring, actions, live activity)
+    api/feedback/          Feedback collection endpoint
+  components/              UI (Header, FeedbackWidget, NetworkBanner, …)
+  lib/                     Contract clients, RPC helpers, formatting, units
+  packages/*-client/       Generated Soroban TypeScript bindings
+contracts/                 Soroban contracts (Rust)
+  factory/ circle/ reputation/ interfaces/
+.github/workflows/ci.yml   CI/CD — contracts + web
+```
+
+### Configuration
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `FEEDBACK_WEBHOOK_URL` | No | Forward in-app feedback to a Discord/Slack/Tally-style webhook for a readable feed. Without it, feedback is still recorded as an analytics event. |
+
+### Screenshots
+| Product UI | How it works | Mobile responsive | Analytics / monitoring |
+| --- | --- | --- | --- |
+| ![Product UI](docs/screenshots/product-ui.png) | ![How it works](docs/screenshots/how-it-works.png) | ![Mobile responsive](docs/screenshots/mobile-l4.png) | ![Analytics](docs/screenshots/analytics.png) |
+
+---
+
 ## Level 3 — Orange Belt
 
 A production-shaped, multi-contract dApp: a `Factory` that deploys `Circle`
@@ -155,10 +203,11 @@ retry / poll-until-changed helpers that keep the UI in sync with Soroban RPC.
 
 ## Network
 
-Halka runs entirely on the **Stellar Testnet** for Levels 1–3. Mainnet is part of the roadmap.
+Halka runs entirely on the **Stellar Testnet** for Levels 1–4. Mainnet is part of the roadmap.
 
 ## Roadmap
 - **L1 — White Belt:** wallet, balance, payments ✓
 - **L2 — Yellow Belt:** multi-wallet + `Circle` Soroban contract with live events ✓
 - **L3 — Orange Belt:** `Factory` + `Reputation` contracts, payout rotation, tests, CI/CD, mobile ✓
-- **L4+:** real users, anchor fiat ramps, yield, portable on-chain credit score
+- **L4 — Green Belt:** production MVP — real users, analytics, in-app feedback, guided onboarding ✓
+- **L5+:** anchor fiat ramps, yield, portable on-chain credit score, mainnet
