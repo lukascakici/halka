@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, type FormEvent } from "react";
 import { usePathname } from "next/navigation";
 import { MessageSquare, X, CheckCircle2, Loader2 } from "lucide-react";
+import { useWallet } from "./WalletProvider";
 
 type Status = "idle" | "submitting" | "success" | "error";
 
@@ -10,6 +11,7 @@ const RATINGS = [1, 2, 3, 4, 5];
 
 export function FeedbackWidget() {
   const pathname = usePathname();
+  const { address } = useWallet();
   const [open, setOpen] = useState(false);
   const [rating, setRating] = useState<number | null>(null);
   const [message, setMessage] = useState("");
@@ -43,7 +45,13 @@ export function FeedbackWidget() {
       const res = await fetch("/api/feedback", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ rating, message, contact, path: pathname }),
+        body: JSON.stringify({
+          rating,
+          message,
+          contact,
+          wallet: address ?? "",
+          path: pathname,
+        }),
       });
       if (!res.ok) throw new Error("Request failed");
       setStatus("success");

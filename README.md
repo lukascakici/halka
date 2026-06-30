@@ -56,9 +56,9 @@ contracts/                 Soroban contracts (Rust)
 | `FEEDBACK_WEBHOOK_URL` | No | Forward in-app feedback to a Discord/Slack/Tally-style webhook for a readable feed. Without it, feedback is still recorded as an analytics event. |
 
 ### Screenshots
-| Product UI | How it works | Mobile responsive | Analytics / monitoring |
-| --- | --- | --- | --- |
-| ![Product UI](docs/screenshots/product-ui.png) | ![How it works](docs/screenshots/how-it-works.png) | ![Mobile responsive](docs/screenshots/mobile-l4.png) | ![Analytics](docs/screenshots/analytics.png) |
+| Product UI | How it works | Mobile responsive | Analytics / monitoring | User feedback |
+| --- | --- | --- | --- | --- |
+| ![Product UI](docs/screenshots/product-ui.png) | ![How it works](docs/screenshots/how-it-works.png) | ![Mobile responsive](docs/screenshots/mobile-l4.png) | ![Analytics](docs/screenshots/analytics.png) | ![User feedback](docs/screenshots/user-feedback.png) |
 
 ---
 

@@ -54,9 +54,12 @@ and performed an on-chain action.
 
 ## Feedback summary
 
-Collected via the in-app feedback widget (1–5 usefulness rating + optional notes,
-visible in the Vercel Analytics **Events** panel) and direct conversations.
+Collected via the in-app feedback widget and a Google Form (name, email, wallet,
+1–5 rating, notes). The widget forwards submissions to the same form, so every
+response lands in the linked Google Sheet — readable and exportable on any plan.
 
+- **Form:** https://docs.google.com/forms/d/e/1FAIpQLSeMiDsEofWIQyjHxAgJBECJvtIQUq-7tbPaWxeoQNFuUd2n2Q/viewform
+- **Responses sheet / Excel export:** _link_
 - **Responses:** _N_
 - **Average rating:** _X.X / 5_
 
