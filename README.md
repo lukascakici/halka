@@ -4,7 +4,7 @@
 
 Halka turns the trusted savings circle — known as _altın günü_ in Turkey, _tanda_ in Latin America, _susu_ in West Africa, _chit fund_ in India — into a transparent, enforceable, borderless protocol on Stellar.
 
-**Live demo:** [halka-kappa.vercel.app](https://halka-kappa.vercel.app/)
+**Live demo:** [halka-kappa.vercel.app](https://halka-kappa.vercel.app/) · **Demo video:** [youtu.be/mc-_Wq9udB8](https://youtu.be/mc-_Wq9udB8)
 
 [![CI](https://github.com/lukascakici/halka/actions/workflows/ci.yml/badge.svg)](https://github.com/lukascakici/halka/actions/workflows/ci.yml)
 
@@ -17,6 +17,8 @@ This repository is built level-by-level for the **Stellar Journey to Mastery** b
 A production-ready MVP: real users, analytics & performance monitoring, in-app
 feedback collection, and a guided onboarding experience — on top of the
 multi-contract architecture from Level 3.
+
+**Demo video (1–2 min):** [youtu.be/mc-_Wq9udB8](https://youtu.be/mc-_Wq9udB8)
 
 ### Features
 - **Analytics & monitoring** — [Vercel Web Analytics](https://vercel.com/docs/analytics)
