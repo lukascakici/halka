@@ -15,6 +15,10 @@ struct Setup<'a> {
 }
 
 fn setup(env: &Env) -> Setup<'_> {
+    setup_with(env, 3)
+}
+
+fn setup_with(env: &Env, max_members: u32) -> Setup<'_> {
     env.mock_all_auths();
 
     let token_admin = Address::generate(env);
@@ -36,7 +40,7 @@ fn setup(env: &Env) -> Setup<'_> {
         &rep_id,
         &CONTRIBUTION,
         &COLLATERAL,
-        &3u32,
+        &max_members,
     );
 
     Setup {
@@ -137,6 +141,102 @@ fn test_slash_default_covers_round() {
 }
 
 #[test]
+fn test_leave_before_start_returns_collateral() {
+    let env = Env::default();
+    let s = setup(&env);
+    let m1 = member(&env, &s);
+    let m2 = member(&env, &s);
+    s.client.join(&m1);
+    s.client.join(&m2);
+
+    s.client.leave(&m1);
+    assert_eq!(s.token.balance(&m1), 1000);
+    assert_eq!(s.client.get_collateral(&m1), 0);
+    assert_eq!(s.client.get_members().len(), 1);
+    assert_eq!(s.token.balance(&s.client.address), COLLATERAL);
+
+    // Leaving isn't a way to keep drawing from the contract.
+    assert_eq!(s.client.try_leave(&m1), Err(Ok(Error::NotMember)));
+}
+
+#[test]
+fn test_cannot_leave_after_start() {
+    let env = Env::default();
+    let s = setup(&env);
+    let m1 = member(&env, &s);
+    let m2 = member(&env, &s);
+    s.client.join(&m1);
+    s.client.join(&m2);
+    s.client.start();
+    assert_eq!(s.client.try_leave(&m2), Err(Ok(Error::AlreadyStarted)));
+}
+
+#[test]
+fn test_circle_finishes_and_returns_collateral() {
+    let env = Env::default();
+    let s = setup(&env);
+    let m1 = member(&env, &s);
+    let m2 = member(&env, &s);
+    s.client.join(&m1);
+    s.client.join(&m2);
+    s.client.start();
+
+    // Collateral is locked while the circle runs.
+    assert_eq!(
+        s.client.try_withdraw_collateral(&m1),
+        Err(Ok(Error::NotWithdrawable))
+    );
+
+    // Round 1 → m1 paid, round 2 → m2 paid. Two members, two rounds.
+    s.client.contribute(&m2);
+    s.client.claim_payout();
+    s.client.contribute(&m1);
+    s.client.claim_payout();
+    assert_eq!(s.client.get_config().status, CircleStatus::Finished);
+
+    s.client.withdraw_collateral(&m1);
+    s.client.withdraw_collateral(&m2);
+
+    // Everyone contributed and everyone was paid, so everyone is square.
+    assert_eq!(s.token.balance(&m1), 1000);
+    assert_eq!(s.token.balance(&m2), 1000);
+    assert_eq!(s.token.balance(&s.client.address), 0);
+    assert_eq!(
+        s.client.try_withdraw_collateral(&m1),
+        Err(Ok(Error::NothingToWithdraw))
+    );
+}
+
+#[test]
+fn test_slash_keeps_the_circle_whole_and_costs_only_reputation() {
+    let env = Env::default();
+    let s = setup(&env);
+    let m1 = member(&env, &s);
+    let m2 = member(&env, &s);
+    s.client.join(&m1);
+    s.client.join(&m2);
+    s.client.start();
+
+    // m2 defaults in round 1 — their collateral covers the contribution, so the
+    // other members are made whole and the round still completes.
+    s.client.slash(&m2);
+    s.client.claim_payout();
+    s.client.contribute(&m1);
+    s.client.claim_payout();
+    assert_eq!(s.client.get_config().status, CircleStatus::Finished);
+
+    s.client.withdraw_collateral(&m1);
+    s.client.withdraw_collateral(&m2);
+
+    // Everyone ends square in tokens: slashing substitutes for the payment, it
+    // does not confiscate on top of it. The default is priced in reputation.
+    assert_eq!(s.token.balance(&m1), 1000);
+    assert_eq!(s.token.balance(&m2), 1000);
+    assert_eq!(s.token.balance(&s.client.address), 0);
+    assert_eq!(s.rep.get_score(&m2), -3);
+}
+
+#[test]
 fn test_slash_draws_down_collateral() {
     let env = Env::default();
     let s = setup(&env);
@@ -154,42 +254,46 @@ fn test_slash_draws_down_collateral() {
 #[test]
 fn test_repeat_defaulter_cannot_exceed_own_collateral() {
     let env = Env::default();
-    let s = setup(&env);
+    let s = setup_with(&env, 4);
     let m1 = member(&env, &s);
     let m2 = member(&env, &s);
     let m3 = member(&env, &s);
-    s.client.join(&m1);
-    s.client.join(&m2);
-    s.client.join(&m3);
+    let m4 = member(&env, &s);
+    for m in [&m1, &m2, &m3, &m4] {
+        s.client.join(m);
+    }
     s.client.start();
 
-    // COLLATERAL covers exactly two missed contributions.
-    s.client.slash(&m3);
+    // COLLATERAL covers exactly two missed contributions, so m4 can default in
+    // rounds 1 and 2 — the other members are still paid in full.
     s.client.contribute(&m2);
-    s.client.claim_payout();
-    s.client.slash(&m3);
-    assert_eq!(s.client.get_collateral(&m3), 0);
-    s.client.contribute(&m1);
+    s.client.contribute(&m3);
+    s.client.slash(&m4);
     s.client.claim_payout();
 
-    // Round 3: m3 is the recipient, so rotate one more round before defaulting
-    // again — by then their collateral is spent and the slash must be refused.
+    s.client.contribute(&m1);
+    s.client.contribute(&m3);
+    s.client.slash(&m4);
+    s.client.claim_payout();
+    assert_eq!(s.client.get_collateral(&m4), 0);
+
+    // Round 3: m4's collateral is spent, so a third slash would pay m3's pot
+    // out of the other members' collateral. It must be refused.
     s.client.contribute(&m1);
     s.client.contribute(&m2);
-    s.client.claim_payout();
-    assert_eq!(s.client.get_round(), 4);
     assert_eq!(
-        s.client.try_slash(&m3),
+        s.client.try_slash(&m4),
         Err(Ok(Error::InsufficientCollateral))
     );
 
-    // The contract never promised more than it holds.
+    // The contract never owes more than it holds.
     assert_eq!(
         s.token.balance(&s.client.address),
         s.client.get_pot()
             + s.client.get_collateral(&m1)
             + s.client.get_collateral(&m2)
             + s.client.get_collateral(&m3)
+            + s.client.get_collateral(&m4)
     );
 }
 

@@ -629,10 +629,14 @@
                           },
                           {
                             "key": {
-                              "symbol": "started"
+                              "symbol": "status"
                             },
                             "val": {
-                              "bool": true
+                              "vec": [
+                                {
+                                  "symbol": "Active"
+                                }
+                              ]
                             }
                           },
                           {

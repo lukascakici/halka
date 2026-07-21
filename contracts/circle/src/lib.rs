@@ -30,6 +30,21 @@ pub enum DataKey {
     Collateral(Address),
 }
 
+/// Where the circle is in its lifecycle. Collateral is only withdrawable once
+/// the circle has come to rest (`Finished` or `Cancelled`).
+#[contracttype]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CircleStatus {
+    /// Accepting members; nobody is committed yet, so joining is reversible.
+    Open,
+    /// Rounds are running.
+    Active,
+    /// Every member has received a payout.
+    Finished,
+    /// Wound down before completing.
+    Cancelled,
+}
+
 #[contracttype]
 #[derive(Clone)]
 pub struct CircleConfig {
@@ -39,7 +54,7 @@ pub struct CircleConfig {
     pub contribution_amount: i128,
     pub collateral_amount: i128,
     pub max_members: u32,
-    pub started: bool,
+    pub status: CircleStatus,
 }
 
 #[contracterror]
@@ -65,6 +80,10 @@ pub enum Error {
     /// contribution, so slashing would pay the pot out of *other* members'
     /// collateral. The circle is stuck and must be wound down instead.
     InsufficientCollateral = 14,
+    /// The circle is still running, so collateral is still at stake.
+    NotWithdrawable = 15,
+    /// No collateral left to return (already withdrawn, or fully slashed).
+    NothingToWithdraw = 16,
 }
 
 #[contractevent]
@@ -76,8 +95,29 @@ pub struct Joined {
 
 #[contractevent]
 #[derive(Clone)]
+pub struct Left {
+    #[topic]
+    pub member: Address,
+}
+
+#[contractevent]
+#[derive(Clone)]
 pub struct Started {
     pub round: u32,
+}
+
+#[contractevent]
+#[derive(Clone)]
+pub struct Finished {
+    pub rounds: u32,
+}
+
+#[contractevent]
+#[derive(Clone)]
+pub struct CollateralWithdrawn {
+    #[topic]
+    pub member: Address,
+    pub amount: i128,
 }
 
 #[contractevent]
@@ -138,7 +178,7 @@ impl CircleContract {
             contribution_amount,
             collateral_amount,
             max_members,
-            started: false,
+            status: CircleStatus::Open,
         };
         env.storage().instance().set(&DataKey::Config, &config);
         env.storage()
@@ -153,7 +193,7 @@ impl CircleContract {
     pub fn join(env: Env, member: Address) -> Result<(), Error> {
         member.require_auth();
         let config = Self::load_config(&env)?;
-        if config.started {
+        if config.status != CircleStatus::Open {
             return Err(Error::AlreadyStarted);
         }
 
@@ -185,14 +225,36 @@ impl CircleContract {
         Ok(())
     }
 
+    /// Leave a circle that hasn't started yet, taking the collateral back.
+    /// Nothing is at stake before the first round, so this is unconditional —
+    /// members are never locked in by an admin who doesn't press start.
+    pub fn leave(env: Env, member: Address) -> Result<(), Error> {
+        member.require_auth();
+        let config = Self::load_config(&env)?;
+        if config.status != CircleStatus::Open {
+            return Err(Error::AlreadyStarted);
+        }
+
+        let members = Self::members(&env);
+        let index = members.first_index_of(&member).ok_or(Error::NotMember)?;
+        let mut remaining = members;
+        remaining.remove(index);
+        env.storage().instance().set(&DataKey::Members, &remaining);
+
+        Self::return_collateral(&env, &config, &member)?;
+
+        Left { member }.publish(&env);
+        Ok(())
+    }
+
     /// Lock membership and begin round 1. Admin only.
     pub fn start(env: Env) -> Result<(), Error> {
         let mut config = Self::load_config(&env)?;
         config.admin.require_auth();
-        if config.started {
+        if config.status != CircleStatus::Open {
             return Err(Error::AlreadyStarted);
         }
-        config.started = true;
+        config.status = CircleStatus::Active;
         env.storage().instance().set(&DataKey::Config, &config);
         env.storage().instance().set(&DataKey::Round, &1u32);
 
@@ -204,7 +266,7 @@ impl CircleContract {
     pub fn contribute(env: Env, member: Address) -> Result<(), Error> {
         member.require_auth();
         let config = Self::load_config(&env)?;
-        if !config.started {
+        if config.status != CircleStatus::Active {
             return Err(Error::NotStarted);
         }
         let members = Self::members(&env);
@@ -247,7 +309,7 @@ impl CircleContract {
     /// The current round's recipient claims the pot, rotating to the next round.
     pub fn claim_payout(env: Env) -> Result<(), Error> {
         let config = Self::load_config(&env)?;
-        if !config.started {
+        if config.status != CircleStatus::Active {
             return Err(Error::NotStarted);
         }
         let members = Self::members(&env);
@@ -277,7 +339,26 @@ impl CircleContract {
             round,
         }
         .publish(&env);
+
+        // One round per member: after the last member is paid, the circle is
+        // done and the remaining collateral is released.
+        if round == n {
+            let mut config = config;
+            config.status = CircleStatus::Finished;
+            env.storage().instance().set(&DataKey::Config, &config);
+            Finished { rounds: n }.publish(&env);
+        }
         Ok(())
+    }
+
+    /// Take back whatever collateral is left once the circle has come to rest.
+    pub fn withdraw_collateral(env: Env, member: Address) -> Result<i128, Error> {
+        member.require_auth();
+        let config = Self::load_config(&env)?;
+        if config.status != CircleStatus::Finished && config.status != CircleStatus::Cancelled {
+            return Err(Error::NotWithdrawable);
+        }
+        Self::return_collateral(&env, &config, &member)
     }
 
     /// Admin slashes a member who didn't contribute this round: their collateral
@@ -285,7 +366,7 @@ impl CircleContract {
     pub fn slash(env: Env, member: Address) -> Result<(), Error> {
         let config = Self::load_config(&env)?;
         config.admin.require_auth();
-        if !config.started {
+        if config.status != CircleStatus::Active {
             return Err(Error::NotStarted);
         }
         let members = Self::members(&env);
@@ -378,6 +459,30 @@ impl CircleContract {
 
     fn pot(env: &Env) -> i128 {
         env.storage().instance().get(&DataKey::Pot).unwrap_or(0)
+    }
+
+    /// Pay a member's remaining collateral back and zero the balance, so a
+    /// repeated call can't drain the contract.
+    fn return_collateral(env: &Env, config: &CircleConfig, member: &Address) -> Result<i128, Error> {
+        let amount = Self::collateral_of(env, member);
+        if amount <= 0 {
+            return Err(Error::NothingToWithdraw);
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::Collateral(member.clone()), &0i128);
+        token::Client::new(env, &config.token).transfer(
+            &env.current_contract_address(),
+            member,
+            &amount,
+        );
+
+        CollateralWithdrawn {
+            member: member.clone(),
+            amount,
+        }
+        .publish(env);
+        Ok(amount)
     }
 
     fn collateral_of(env: &Env, member: &Address) -> i128 {

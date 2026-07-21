@@ -373,10 +373,14 @@
                           },
                           {
                             "key": {
-                              "symbol": "started"
+                              "symbol": "status"
                             },
                             "val": {
-                              "bool": false
+                              "vec": [
+                                {
+                                  "symbol": "Open"
+                                }
+                              ]
                             }
                           },
                           {
