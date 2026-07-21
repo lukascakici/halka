@@ -1,7 +1,13 @@
 import { rpc, scValToNative } from "@stellar/stellar-sdk";
-import { NETWORK } from "./config";
+import { getNetwork } from "./config";
 
-const server = new rpc.Server(NETWORK.sorobanRpcUrl);
+// Built on first use rather than at import time, so the RPC endpoint always
+// reflects the network the page actually loaded with.
+let cached: rpc.Server | null = null;
+function server(): rpc.Server {
+  cached ??= new rpc.Server(getNetwork().sorobanRpcUrl);
+  return cached;
+}
 
 export interface CircleEvent {
   id: string;
@@ -20,10 +26,10 @@ export async function fetchCircleEvents(
   circleId: string,
   limit = 25,
 ): Promise<CircleEvent[]> {
-  const latest = await server.getLatestLedger();
+  const latest = await server().getLatestLedger();
   const startLedger = Math.max(1, latest.sequence - 9000);
 
-  const res = await server.getEvents({
+  const res = await server().getEvents({
     startLedger,
     filters: [{ type: "contract", contractIds: [circleId] }],
     limit,

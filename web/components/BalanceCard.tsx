@@ -6,9 +6,10 @@ import { useWallet } from "./WalletProvider";
 import { getXlmBalance, fundWithFriendbot } from "@/lib/stellar";
 import { formatXlm } from "@/lib/format";
 import { CopyButton } from "./CopyButton";
-import { NETWORK } from "@/lib/config";
+import { useNetwork } from "@/lib/useNetwork";
 
 export function BalanceCard({ refreshNonce }: { refreshNonce: number }) {
+  const network = useNetwork();
   const { address } = useWallet();
   const [balance, setBalance] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -81,20 +82,25 @@ export function BalanceCard({ refreshNonce }: { refreshNonce: number }) {
               Account not funded
             </p>
             <p className="mt-1 text-sm text-zinc-500">
-              This account doesn’t exist on {NETWORK.label} yet. Fund it to get
-              started.
+              This account doesn’t exist on {network.label} yet.{" "}
+              {network.friendbotUrl
+                ? "Fund it to get started."
+                : "Send it real XLM from another wallet or an exchange to get started."}
             </p>
-            <button
-              type="button"
-              onClick={onFund}
-              disabled={funding}
-              className="mt-4 inline-flex h-10 items-center gap-2 rounded-full bg-accent px-5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-60"
-            >
-              {funding && (
-                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.5} />
-              )}
-              {funding ? "Funding" : "Fund with Friendbot"}
-            </button>
+            {/* There is no faucet for real XLM — only test networks have one. */}
+            {network.friendbotUrl && (
+              <button
+                type="button"
+                onClick={onFund}
+                disabled={funding}
+                className="mt-4 inline-flex h-10 items-center gap-2 rounded-full bg-accent px-5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-60"
+              >
+                {funding && (
+                  <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.5} />
+                )}
+                {funding ? "Funding" : "Fund with Friendbot"}
+              </button>
+            )}
           </div>
         ) : (
           <div className="flex items-baseline gap-2">

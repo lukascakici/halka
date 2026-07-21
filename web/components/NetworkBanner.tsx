@@ -2,9 +2,10 @@
 
 import { AlertTriangle } from "lucide-react";
 import { useWallet } from "./WalletProvider";
-import { NETWORK } from "@/lib/config";
+import { useNetwork } from "@/lib/useNetwork";
 
 export function NetworkBanner() {
+  const network = useNetwork();
   const { isWrongNetwork } = useWallet();
   if (!isWrongNetwork) return null;
 
@@ -14,7 +15,7 @@ export function NetworkBanner() {
         <AlertTriangle className="h-4 w-4 shrink-0" strokeWidth={2.5} />
         <span>
           Your wallet is on a different network. Switch it to{" "}
-          <strong className="font-semibold">{NETWORK.label}</strong> to use
+          <strong className="font-semibold">{network.label}</strong> to use
           Halka.
         </span>
       </div>

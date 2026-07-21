@@ -4,12 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Power } from "lucide-react";
 import { useWallet } from "./WalletProvider";
 import { truncateAddress } from "@/lib/format";
-import { NETWORK } from "@/lib/config";
+import { useNetwork } from "@/lib/useNetwork";
+import { NetworkSwitcher } from "./NetworkSwitcher";
 import { BalanceCard } from "./BalanceCard";
 import { SendForm } from "./SendForm";
 
 /** The wallet lives behind the address chip: click it to open balance + send. */
 export function WalletMenu() {
+  const network = useNetwork();
   const { address, disconnect } = useWallet();
   const [open, setOpen] = useState(false);
   const [nonce, setNonce] = useState(0);
@@ -48,9 +50,10 @@ export function WalletMenu() {
       {open && (
         <div className="absolute right-0 mt-2 w-[min(92vw,380px)] space-y-3 rounded-2xl border border-zinc-200 bg-white p-3 shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
           <div className="flex items-center justify-between px-1">
-            <span className="text-xs font-medium text-zinc-500">
-              {NETWORK.label}
-            </span>
+            {/* The header switcher is hidden on small screens, so it lives
+                here too — the wallet menu is where network belongs anyway. */}
+            <NetworkSwitcher />
+            <span className="sr-only">Current network: {network.label}</span>
             <button
               type="button"
               onClick={() => {

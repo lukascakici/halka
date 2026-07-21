@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useWallet } from "./WalletProvider";
 import { WalletMenu } from "./WalletMenu";
+import { NetworkSwitcher } from "./NetworkSwitcher";
 import { ThemeToggle } from "./ThemeToggle";
 
 export function Header() {
@@ -37,6 +38,9 @@ export function Header() {
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className="hidden sm:block">
+            <NetworkSwitcher />
+          </div>
           <ThemeToggle />
           {status === "connected" ? (
             <WalletMenu />

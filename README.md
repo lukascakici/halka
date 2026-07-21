@@ -51,9 +51,17 @@ contracts/                 Soroban contracts (Rust)
 ```
 
 ### Configuration
+See [`web/.env.example`](web/.env.example).
+
 | Variable | Required | Purpose |
 | --- | --- | --- |
+| `NEXT_PUBLIC_MAINNET_RPC_URL` | For mainnet | Soroban RPC endpoint. There is no free public one for mainnet — it comes from a provider (Blockdaemon, QuickNode, Validation Cloud, …). |
+| `NEXT_PUBLIC_MAINNET_FACTORY` | For mainnet | Factory contract deployed to mainnet. |
+| `NEXT_PUBLIC_MAINNET_REPUTATION` | For mainnet | Reputation contract deployed to mainnet. |
 | `FEEDBACK_WEBHOOK_URL` | No | Forward in-app feedback to a Discord/Slack/Tally-style webhook for a readable feed. Without it, feedback is still recorded as an analytics event. |
+
+Testnet needs no configuration. Mainnet stays locked in the network switcher
+until all three mainnet variables are set.
 
 ### Screenshots
 | Product UI | How it works | Mobile responsive | Analytics / monitoring | User feedback |
@@ -205,7 +213,30 @@ retry / poll-until-changed helpers that keep the UI in sync with Soroban RPC.
 
 ## Network
 
-Halka runs entirely on the **Stellar Testnet** for Levels 1–4. Mainnet is part of the roadmap.
+The app talks to one chain at a time, chosen with the network switcher in the
+header. This can't be per-circle: the RPC endpoint, the network passphrase, the
+deployed contract addresses and the wallet's own network all have to agree, so
+switching reloads the page.
+
+**Testnet** works out of the box and is where Halka runs today. **Mainnet** is
+wired up but locked until it has a Soroban RPC endpoint and deployed contracts
+(see [Configuration](#configuration)) — offering a network that fails on its
+first call is worse than not offering it.
+
+Before mainnet carries real money, these remain open:
+
+- **No audit.** Nobody independent has reviewed the contracts.
+- **Defaulting costs no tokens.** A slash substitutes a member's collateral for
+  the payment they skipped rather than confiscating on top of it, so a defaulter
+  ends square in XLM and pays only in reputation.
+- **Winding down mid-circle is uneven.** Only the round in flight is refundable;
+  members already paid keep it, members still waiting don't get those rounds
+  back. Inherent to ending a ROSCA early, but it needs to be understood.
+
+`Circle` is deliberately **not upgradeable** — it custodies member collateral and
+its admin is an ordinary user, so an upgrade hook there would let that user swap
+in code that drains everyone's deposits. `Factory` and `Reputation` are
+upgradeable; fixes reach new circles via `Factory::set_circle_wasm`.
 
 ## Roadmap
 - **L1 — White Belt:** wallet, balance, payments ✓

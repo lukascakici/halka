@@ -7,9 +7,15 @@ import {
   StrKey,
   Memo,
 } from "@stellar/stellar-sdk";
-import { NETWORK } from "./config";
+import { getNetwork } from "./config";
 
-const server = new Horizon.Server(NETWORK.horizonUrl);
+// Built on first use rather than at import time, so the Horizon endpoint always
+// reflects the network the page actually loaded with.
+let cached: Horizon.Server | null = null;
+function server(): Horizon.Server {
+  cached ??= new Horizon.Server(getNetwork().horizonUrl);
+  return cached;
+}
 
 /** Validate a Stellar public key (G...). */
 export function isValidAddress(address: string): boolean {
@@ -22,11 +28,11 @@ export function isValidAddress(address: string): boolean {
 
 /**
  * Fetch the native XLM balance.
- * Returns null when the account is not yet funded on Testnet.
+ * Returns null when the account is not funded on the active network.
  */
 export async function getXlmBalance(address: string): Promise<string | null> {
   try {
-    const account = await server.loadAccount(address);
+    const account = await server().loadAccount(address);
     const native = account.balances.find((b) => b.asset_type === "native");
     return native ? native.balance : "0";
   } catch (e: unknown) {
@@ -35,11 +41,16 @@ export async function getXlmBalance(address: string): Promise<string | null> {
   }
 }
 
-/** Fund an account on Testnet via Friendbot. */
+/**
+ * Fund an account via Friendbot. Test networks only — there is no faucet for
+ * real XLM, so callers must hide this on mainnet.
+ */
 export async function fundWithFriendbot(address: string): Promise<void> {
-  const res = await fetch(
-    `${NETWORK.friendbotUrl}?addr=${encodeURIComponent(address)}`,
-  );
+  const { friendbotUrl } = getNetwork();
+  if (!friendbotUrl) {
+    throw new Error("Accounts on Mainnet must be funded with real XLM.");
+  }
+  const res = await fetch(`${friendbotUrl}?addr=${encodeURIComponent(address)}`);
   if (!res.ok) {
     throw new Error("Friendbot could not fund this account. Try again.");
   }
@@ -60,7 +71,7 @@ const MIN_ACCOUNT_BALANCE = 1;
 /** Returns true if the destination account already exists on the network. */
 async function accountExists(address: string): Promise<boolean> {
   try {
-    await server.loadAccount(address);
+    await server().loadAccount(address);
     return true;
   } catch (e: unknown) {
     if (isNotFound(e)) return false;
@@ -69,7 +80,7 @@ async function accountExists(address: string): Promise<boolean> {
 }
 
 /**
- * Build, sign, and submit a native XLM transfer on Testnet.
+ * Build, sign, and submit a native XLM transfer.
  * - Existing destination  -> a normal payment.
  * - New destination       -> createAccount, so sending to a fresh address works.
  * Returns the transaction hash on success.
@@ -81,7 +92,7 @@ export async function sendPayment({
   memo,
   sign,
 }: SendPaymentParams): Promise<string> {
-  const account = await server.loadAccount(source);
+  const account = await server().loadAccount(source);
   const destExists = await accountExists(destination);
 
   if (!destExists && Number(amount) < MIN_ACCOUNT_BALANCE) {
@@ -103,7 +114,7 @@ export async function sendPayment({
 
   const builder = new TransactionBuilder(account, {
     fee: BASE_FEE,
-    networkPassphrase: NETWORK.passphrase,
+    networkPassphrase: getNetwork().passphrase,
   })
     .addOperation(operation)
     .setTimeout(180);
@@ -114,10 +125,10 @@ export async function sendPayment({
 
   const tx = builder.build();
   const signedXdr = await sign(tx.toXDR());
-  const signedTx = TransactionBuilder.fromXDR(signedXdr, NETWORK.passphrase);
+  const signedTx = TransactionBuilder.fromXDR(signedXdr, getNetwork().passphrase);
 
   try {
-    const result = await server.submitTransaction(signedTx);
+    const result = await server().submitTransaction(signedTx);
     return result.hash;
   } catch (e: unknown) {
     throw new Error(parseHorizonError(e));
@@ -154,7 +165,7 @@ function parseHorizonError(e: unknown): string {
     return "Insufficient XLM balance for this payment.";
   }
   if (opCode === "op_no_destination") {
-    return "Destination account does not exist on Testnet yet.";
+    return `Destination account does not exist on ${getNetwork().label} yet.`;
   }
   if (txCode === "tx_bad_seq") {
     return "Transaction sequence was out of date. Please try again.";

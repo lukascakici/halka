@@ -1,11 +1,11 @@
 import { Client as ReputationClient } from "@reputation-client";
-import { NETWORK, CONTRACTS } from "./config";
+import { getNetwork, getContracts } from "./config";
 
 function makeClient(publicKey: string): ReputationClient {
   return new ReputationClient({
-    contractId: CONTRACTS.reputation,
-    networkPassphrase: NETWORK.passphrase,
-    rpcUrl: NETWORK.sorobanRpcUrl,
+    contractId: getContracts().reputation,
+    networkPassphrase: getNetwork().passphrase,
+    rpcUrl: getNetwork().sorobanRpcUrl,
     publicKey,
   });
 }

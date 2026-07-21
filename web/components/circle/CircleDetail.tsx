@@ -20,7 +20,7 @@ import {
   Users,
 } from "lucide-react";
 import { useWallet } from "@/components/WalletProvider";
-import { NETWORK } from "@/lib/config";
+import { useNetwork } from "@/lib/useNetwork";
 import { truncateAddress } from "@/lib/format";
 import {
   readCircleState,
@@ -154,6 +154,7 @@ function WindDown({
 
 export function CircleDetail({ circleId }: { circleId: string }) {
   const { address, status, connect } = useWallet();
+  const network = useNetwork();
   const [state, setState] = useState<CircleState | null>(null);
   const [events, setEvents] = useState<CircleEvent[]>([]);
   const [scores, setScores] = useState<Record<string, number>>({});
@@ -177,12 +178,12 @@ export function CircleDetail({ circleId }: { circleId: string }) {
       const msg = e instanceof Error ? e.message : "Could not load the circle.";
       setLoadError(
         /not found|account/i.test(msg)
-          ? "Your account isn't funded on Testnet yet. Fund it on the Wallet page first."
+          ? `Your account isn't funded on ${network.label} yet. Fund it on the Wallet page first.`
           : msg,
       );
       return null;
     }
-  }, [address, circleId]);
+  }, [address, circleId, network.label]);
 
   useEffect(() => {
     if (status !== "connected") return;
@@ -221,7 +222,7 @@ export function CircleDetail({ circleId }: { circleId: string }) {
             Connect your wallet
           </h2>
           <p className="mx-auto mt-2 max-w-md text-zinc-600">
-            Connect to view this circle and take part on {NETWORK.label}.
+            Connect to view this circle and take part on {network.label}.
           </p>
           <button
             onClick={() => connect().catch(() => {})}
@@ -302,7 +303,7 @@ export function CircleDetail({ circleId }: { circleId: string }) {
                     : "Completed"}
             </span>
             <a
-              href={NETWORK.explorerContract(circleId)}
+              href={network.explorerContract(circleId)}
               target="_blank"
               rel="noopener noreferrer"
               title={circleId}
@@ -479,7 +480,7 @@ export function CircleDetail({ circleId }: { circleId: string }) {
             {events.map((e) => (
               <li key={e.id}>
                 <a
-                  href={NETWORK.explorerTx(e.txHash)}
+                  href={network.explorerTx(e.txHash)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/50"

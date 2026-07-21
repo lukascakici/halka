@@ -1,5 +1,5 @@
 import { Client as FactoryClient } from "@factory-client";
-import { NETWORK, CONTRACTS } from "./config";
+import { getNetwork, getContracts } from "./config";
 import { signXdr } from "./wallet";
 import { xlmToStroops } from "./units";
 import { ContractError } from "./circle";
@@ -15,9 +15,9 @@ export const DEFAULT_ROUND_TIMEOUT_LEDGERS = 518_400;
 
 function makeFactory(publicKey: string): FactoryClient {
   return new FactoryClient({
-    contractId: CONTRACTS.factory,
-    networkPassphrase: NETWORK.passphrase,
-    rpcUrl: NETWORK.sorobanRpcUrl,
+    contractId: getContracts().factory,
+    networkPassphrase: getNetwork().passphrase,
+    rpcUrl: getNetwork().sorobanRpcUrl,
     publicKey,
     signTransaction: async (xdr: string) => ({
       signedTxXdr: await signXdr(xdr, publicKey),

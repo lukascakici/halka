@@ -3,7 +3,7 @@ import {
   type CircleConfig,
   type CircleStatus,
 } from "@circle-client";
-import { NETWORK } from "./config";
+import { getNetwork } from "./config";
 import { signXdr } from "./wallet";
 import { withSeqRetry } from "./async";
 
@@ -68,8 +68,8 @@ function toContractError(code: string): ContractError {
 function makeClient(circleId: string, publicKey: string): CircleClient {
   return new CircleClient({
     contractId: circleId,
-    networkPassphrase: NETWORK.passphrase,
-    rpcUrl: NETWORK.sorobanRpcUrl,
+    networkPassphrase: getNetwork().passphrase,
+    rpcUrl: getNetwork().sorobanRpcUrl,
     publicKey,
     signTransaction: async (xdr: string) => ({
       signedTxXdr: await signXdr(xdr, publicKey),

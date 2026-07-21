@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowUpRight, Loader2, Plus, Users, Wallet } from "lucide-react";
 import { useWallet } from "@/components/WalletProvider";
-import { NETWORK } from "@/lib/config";
+import { useNetwork } from "@/lib/useNetwork";
 import {
   listCircles,
   createCircle as createCircleTx,
@@ -23,6 +23,7 @@ import { Panel, PrimaryButton, ActionStatus, type ActionState } from "@/componen
 
 export function CirclesList() {
   const { address, status, connect } = useWallet();
+  const network = useNetwork();
   const [circles, setCircles] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,14 +45,14 @@ export function CirclesList() {
       const msg = e instanceof Error ? e.message : "Could not load circles.";
       setError(
         /not found|account/i.test(msg)
-          ? "Your account isn't funded on Testnet yet. Fund it on the Wallet page first."
+          ? `Your account isn't funded on ${network.label} yet. Fund it on the Wallet page first.`
           : msg,
       );
       return null;
     } finally {
       setLoading(false);
     }
-  }, [address]);
+  }, [address, network.label]);
 
   useEffect(() => {
     if (status !== "connected") return;
@@ -95,7 +96,7 @@ export function CirclesList() {
             Connect your wallet
           </h2>
           <p className="mx-auto mt-2 max-w-md text-zinc-600 dark:text-zinc-400">
-            Connect to browse circles and start your own on {NETWORK.label}.
+            Connect to browse circles and start your own on {network.label}.
           </p>
           <button
             onClick={() => connect().catch(() => {})}

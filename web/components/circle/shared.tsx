@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { ArrowUpRight, CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { CopyButton } from "@/components/CopyButton";
-import { NETWORK } from "@/lib/config";
+import { useNetwork } from "@/lib/useNetwork";
 
 export type ActionState =
   | { status: "idle" }
@@ -71,6 +71,8 @@ export function ActionStatus({
   action: ActionState;
   onDismiss: () => void;
 }) {
+  // Before the early returns — hooks can't run conditionally.
+  const network = useNetwork();
   if (action.status === "idle") return null;
   if (action.status === "pending") {
     return (
@@ -99,7 +101,7 @@ export function ActionStatus({
       <div className="mt-2 flex items-center gap-4">
         <CopyButton value={action.hash} label="Copy hash" />
         <a
-          href={NETWORK.explorerTx(action.hash)}
+          href={network.explorerTx(action.hash)}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1 font-medium text-accent hover:text-accent-hover"

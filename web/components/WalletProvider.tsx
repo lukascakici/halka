@@ -16,7 +16,7 @@ import {
   signXdr,
   WalletError,
 } from "@/lib/wallet";
-import { NETWORK } from "@/lib/config";
+import { getNetwork } from "@/lib/config";
 
 type Status = "disconnected" | "connecting" | "connected";
 
@@ -95,7 +95,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const isWrongNetwork =
     status === "connected" &&
     networkPassphrase !== null &&
-    networkPassphrase !== NETWORK.passphrase;
+    networkPassphrase !== getNetwork().passphrase;
 
   return (
     <WalletContext.Provider

@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 import { ArrowUpRight, CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { useWallet } from "./WalletProvider";
 import { sendPayment, isValidAddress } from "@/lib/stellar";
-import { NETWORK } from "@/lib/config";
+import { useNetwork } from "@/lib/useNetwork";
 import { CopyButton } from "./CopyButton";
 import { truncateAddress } from "@/lib/format";
 
@@ -15,6 +15,7 @@ type TxState =
   | { status: "error"; message: string };
 
 export function SendForm({ onSuccess }: { onSuccess: () => void }) {
+  const network = useNetwork();
   const { address, signXdr } = useWallet();
   const [destination, setDestination] = useState("");
   const [amount, setAmount] = useState("");
@@ -68,7 +69,7 @@ export function SendForm({ onSuccess }: { onSuccess: () => void }) {
           </h2>
         </div>
         <p className="mt-2 text-sm text-zinc-500">
-          Your payment was confirmed on {NETWORK.label}.
+          Your payment was confirmed on {network.label}.
         </p>
 
         <div className="mt-5 rounded-xl bg-zinc-50 p-4 dark:bg-zinc-800/50">
@@ -81,7 +82,7 @@ export function SendForm({ onSuccess }: { onSuccess: () => void }) {
           <div className="mt-3 flex items-center gap-4">
             <CopyButton value={tx.hash} label="Copy hash" />
             <a
-              href={NETWORK.explorerTx(tx.hash)}
+              href={network.explorerTx(tx.hash)}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 text-sm font-medium text-accent transition-colors hover:text-accent-hover"
@@ -109,7 +110,7 @@ export function SendForm({ onSuccess }: { onSuccess: () => void }) {
         Send a contribution
       </h2>
       <p className="mt-1 text-sm text-zinc-500">
-        Send XLM to any address on {NETWORK.label} — the first building block of
+        Send XLM to any address on {network.label} — the first building block of
         a Halka savings circle.
       </p>
 

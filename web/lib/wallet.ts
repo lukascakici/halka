@@ -1,4 +1,4 @@
-import { NETWORK } from "./config";
+import { getNetwork } from "./config";
 
 /**
  * Multi-wallet layer built on StellarWalletsKit (Level 2).
@@ -107,12 +107,12 @@ export async function disconnectWallet(): Promise<void> {
   }
 }
 
-/** Sign a transaction XDR with the active wallet on Testnet. */
+/** Sign a transaction XDR with the active wallet. */
 export async function signXdr(xdr: string, address: string): Promise<string> {
   const kit = await ensureKit();
   try {
     const { signedTxXdr } = await kit.signTransaction(xdr, {
-      networkPassphrase: NETWORK.passphrase,
+      networkPassphrase: getNetwork().passphrase,
       address,
     });
     return signedTxXdr;
