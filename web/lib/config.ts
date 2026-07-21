@@ -21,9 +21,9 @@ export const NETWORK = {
 /** Deployed contract addresses (see docs/deployments.md). */
 export const CONTRACTS = {
   /** Factory that deploys and registers Circle instances. */
-  factory: "CBYJLPQPQL7SYVKO4QYYQ5H37TYW2PSCRE3ENHHNFPWDGT7Q6FFGCTOH",
+  factory: "CCQAHHQJ2SHRZH34CZ5S3REQECIPAOKA3ALCUK6Y3V5WOQM2I67RR53Y",
   /** Shared cross-circle reputation contract. */
-  reputation: "CD65FDOB75TYWGEDCJKAJW7TQWTRANXI5O43LMOQCMS5ZZN5RNDRWF3L",
+  reputation: "CCZT5YSIKH2CXMOKNZUI7VPPN7ZZRBE2C37E7NLUFCFQOWAPG6YLD2WF",
   /** Native XLM wrapped as a Stellar Asset Contract (the contribution token). */
   token: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
 } as const;
