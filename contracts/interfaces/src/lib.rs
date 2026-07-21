@@ -25,5 +25,6 @@ pub trait Circle {
         contribution_amount: i128,
         collateral_amount: i128,
         max_members: u32,
+        round_timeout_ledgers: u32,
     );
 }

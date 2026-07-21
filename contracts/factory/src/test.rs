@@ -32,7 +32,7 @@ fn test_create_circle_full_flow() {
 
     // Create a circle through the factory.
     let creator = Address::generate(&env);
-    let circle_addr = factory.create_circle(&creator, &100i128, &200i128, &3u32);
+    let circle_addr = factory.create_circle(&creator, &100i128, &200i128, &3u32, &1000u32);
 
     assert_eq!(factory.get_circle_count(), 1);
     assert_eq!(

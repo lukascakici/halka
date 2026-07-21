@@ -110,6 +110,9 @@
                 },
                 {
                   "u32": 3
+                },
+                {
+                  "u32": 1000
                 }
               ]
             }
@@ -629,6 +632,14 @@
                           },
                           {
                             "key": {
+                              "symbol": "round_timeout_ledgers"
+                            },
+                            "val": {
+                              "u32": 1000
+                            }
+                          },
+                          {
+                            "key": {
                               "symbol": "status"
                             },
                             "val": {
@@ -709,6 +720,18 @@
                       },
                       "val": {
                         "u32": 1
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
+                            "symbol": "RoundStartedAt"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "u32": 0
                       }
                     }
                   ]

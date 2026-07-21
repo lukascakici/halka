@@ -2,10 +2,21 @@
 
 use super::*;
 use reputation::{ReputationContract, ReputationContractClient};
-use soroban_sdk::{testutils::Address as _, token, Address, Env};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger as _},
+    token, Address, Env,
+};
 
 const CONTRIBUTION: i128 = 100;
 const COLLATERAL: i128 = 200;
+/// Ledgers a round may stall before anyone can wind the circle down.
+const TIMEOUT: u32 = 1000;
+
+/// Move past the stall deadline for the current round.
+fn expire_round(env: &Env) {
+    let now = env.ledger().sequence();
+    env.ledger().set_sequence_number(now + TIMEOUT + 1);
+}
 
 struct Setup<'a> {
     client: CircleContractClient<'a>,
@@ -41,6 +52,7 @@ fn setup_with(env: &Env, max_members: u32) -> Setup<'_> {
         &CONTRIBUTION,
         &COLLATERAL,
         &max_members,
+        &TIMEOUT,
     );
 
     Setup {
@@ -74,7 +86,7 @@ fn test_double_initialize_fails() {
     let a = Address::generate(&env);
     assert_eq!(
         s.client
-            .try_initialize(&a, &a, &a, &CONTRIBUTION, &COLLATERAL, &3u32),
+            .try_initialize(&a, &a, &a, &CONTRIBUTION, &COLLATERAL, &3u32, &TIMEOUT),
         Err(Ok(Error::AlreadyInitialized))
     );
 }
@@ -234,6 +246,114 @@ fn test_slash_keeps_the_circle_whole_and_costs_only_reputation() {
     assert_eq!(s.token.balance(&m2), 1000);
     assert_eq!(s.token.balance(&s.client.address), 0);
     assert_eq!(s.rep.get_score(&m2), -3);
+}
+
+#[test]
+fn test_stalled_round_lets_anyone_rescue_the_funds() {
+    let env = Env::default();
+    let s = setup(&env);
+    let m1 = member(&env, &s);
+    let m2 = member(&env, &s);
+    let m3 = member(&env, &s);
+    for m in [&m1, &m2, &m3] {
+        s.client.join(m);
+    }
+    s.client.start();
+
+    // m2 pays, then m3 goes silent and the admin never slashes them. Before the
+    // deadline the members are held to the circle.
+    s.client.contribute(&m2);
+    assert!(!s.client.is_stalled());
+    assert_eq!(s.client.try_cancel(&m2), Err(Ok(Error::TimeoutNotReached)));
+
+    // Past the deadline any member can wind it down without the admin.
+    expire_round(&env);
+    assert!(s.client.is_stalled());
+    s.client.cancel(&m2);
+    assert_eq!(s.client.get_config().status, CircleStatus::Cancelled);
+
+    // The unfinished round is unwound: m2's contribution is theirs again.
+    assert_eq!(s.client.get_pot(), 0);
+    assert_eq!(s.client.get_collateral(&m2), COLLATERAL + CONTRIBUTION);
+
+    for m in [&m1, &m2, &m3] {
+        s.client.withdraw_collateral(m);
+        assert_eq!(s.token.balance(m), 1000);
+    }
+    assert_eq!(s.token.balance(&s.client.address), 0);
+}
+
+#[test]
+fn test_admin_can_cancel_without_waiting() {
+    let env = Env::default();
+    let s = setup(&env);
+    let admin = s.client.get_config().admin;
+    let m1 = member(&env, &s);
+    let m2 = member(&env, &s);
+    s.client.join(&m1);
+    s.client.join(&m2);
+    s.client.start();
+
+    s.client.cancel(&admin);
+    assert_eq!(s.client.get_config().status, CircleStatus::Cancelled);
+    assert_eq!(s.client.try_cancel(&admin), Err(Ok(Error::AlreadyEnded)));
+}
+
+#[test]
+fn test_exhausted_collateral_is_not_a_dead_end() {
+    let env = Env::default();
+    let s = setup_with(&env, 4);
+    let m1 = member(&env, &s);
+    let m2 = member(&env, &s);
+    let m3 = member(&env, &s);
+    let m4 = member(&env, &s);
+    for m in [&m1, &m2, &m3, &m4] {
+        s.client.join(m);
+    }
+    s.client.start();
+
+    // m4 defaults until their collateral is spent; the round can then neither
+    // be completed nor slashed shut. The timeout is the only way out.
+    s.client.contribute(&m2);
+    s.client.contribute(&m3);
+    s.client.slash(&m4);
+    s.client.claim_payout();
+    s.client.contribute(&m1);
+    s.client.contribute(&m3);
+    s.client.slash(&m4);
+    s.client.claim_payout();
+
+    s.client.contribute(&m1);
+    s.client.contribute(&m2);
+    assert_eq!(
+        s.client.try_slash(&m4),
+        Err(Ok(Error::InsufficientCollateral))
+    );
+    assert_eq!(s.client.try_claim_payout(), Err(Ok(Error::RoundIncomplete)));
+
+    expire_round(&env);
+    s.client.cancel(&m1);
+    for m in [&m1, &m2, &m3] {
+        s.client.withdraw_collateral(m);
+    }
+    // m4's collateral went entirely to covering their two defaults.
+    assert_eq!(
+        s.client.try_withdraw_collateral(&m4),
+        Err(Ok(Error::NothingToWithdraw))
+    );
+
+    // The contract pays out exactly what it holds and nothing is stranded.
+    assert_eq!(s.token.balance(&s.client.address), 0);
+
+    // Cancelling mid-circle is inherently uneven, and the contract cannot undo
+    // it: m1 and m2 were already paid, while m3 funded two rounds and never had
+    // their turn. Only the *current* round is refundable — completed payouts
+    // are gone. This is a property of winding down a ROSCA early, and the UI
+    // must warn members before they cancel.
+    assert_eq!(s.token.balance(&m1), 1200);
+    assert_eq!(s.token.balance(&m2), 1200);
+    assert_eq!(s.token.balance(&m3), 800);
+    assert_eq!(s.token.balance(&m4), 800);
 }
 
 #[test]

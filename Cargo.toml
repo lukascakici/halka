@@ -7,6 +7,12 @@ members = [
 [workspace.dependencies]
 soroban-sdk = "26"
 
+[workspace.lints.clippy]
+# A circle's terms are all fixed at construction and none are optional, so the
+# initializer — and every typed client the macros generate from it — is wide by
+# nature. Bundling them into a struct would only move the arguments elsewhere.
+too_many_arguments = "allow"
+
 [profile.release]
 opt-level = "z"
 overflow-checks = true

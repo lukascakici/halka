@@ -110,6 +110,9 @@
                 },
                 {
                   "u32": 3
+                },
+                {
+                  "u32": 1000
                 }
               ]
             }
@@ -467,6 +470,14 @@
                             },
                             "val": {
                               "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "round_timeout_ledgers"
+                            },
+                            "val": {
+                              "u32": 1000
                             }
                           },
                           {

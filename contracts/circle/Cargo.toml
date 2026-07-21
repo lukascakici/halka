@@ -15,3 +15,6 @@ interfaces = { path = "../interfaces" }
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 reputation = { path = "../reputation" }
+
+[lints]
+workspace = true

@@ -23,6 +23,8 @@ pub enum DataKey {
     Members,
     Round,
     Pot,
+    /// Ledger at which the current round began, for the stall timeout.
+    RoundStartedAt,
     /// Whether `member` has contributed in a given `round`.
     Contributed(u32, Address),
     /// Collateral still held for `member`. Posted on join, drawn down by
@@ -55,6 +57,10 @@ pub struct CircleConfig {
     pub collateral_amount: i128,
     pub max_members: u32,
     pub status: CircleStatus,
+    /// How long a round may stall before anyone can wind the circle down. This
+    /// is the escape hatch: without it an absent admin, or a defaulter whose
+    /// collateral is spent, would strand everyone's funds permanently.
+    pub round_timeout_ledgers: u32,
 }
 
 #[contracterror]
@@ -84,6 +90,11 @@ pub enum Error {
     NotWithdrawable = 15,
     /// No collateral left to return (already withdrawn, or fully slashed).
     NothingToWithdraw = 16,
+    /// The round hasn't stalled long enough for a non-admin to wind the circle
+    /// down.
+    TimeoutNotReached = 17,
+    /// The circle is already Finished or Cancelled.
+    AlreadyEnded = 18,
 }
 
 #[contractevent]
@@ -110,6 +121,14 @@ pub struct Started {
 #[derive(Clone)]
 pub struct Finished {
     pub rounds: u32,
+}
+
+#[contractevent]
+#[derive(Clone)]
+pub struct Cancelled {
+    pub round: u32,
+    /// True when a stalled round let a non-admin wind the circle down.
+    pub by_timeout: bool,
 }
 
 #[contractevent]
@@ -161,12 +180,18 @@ impl CircleContract {
         contribution_amount: i128,
         collateral_amount: i128,
         max_members: u32,
+        round_timeout_ledgers: u32,
     ) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::Config) {
             return Err(Error::AlreadyInitialized);
         }
-        // Collateral must cover a missed contribution so `slash` stays solvent.
-        if contribution_amount <= 0 || collateral_amount < contribution_amount || max_members < 2 {
+        // Collateral must cover a missed contribution so `slash` stays solvent,
+        // and a round must have a finite deadline so funds can always get out.
+        if contribution_amount <= 0
+            || collateral_amount < contribution_amount
+            || max_members < 2
+            || round_timeout_ledgers == 0
+        {
             return Err(Error::InvalidParams);
         }
         admin.require_auth();
@@ -179,6 +204,7 @@ impl CircleContract {
             collateral_amount,
             max_members,
             status: CircleStatus::Open,
+            round_timeout_ledgers,
         };
         env.storage().instance().set(&DataKey::Config, &config);
         env.storage()
@@ -257,6 +283,7 @@ impl CircleContract {
         config.status = CircleStatus::Active;
         env.storage().instance().set(&DataKey::Config, &config);
         env.storage().instance().set(&DataKey::Round, &1u32);
+        Self::stamp_round_start(&env);
 
         Started { round: 1 }.publish(&env);
         Ok(())
@@ -332,6 +359,7 @@ impl CircleContract {
         token::Client::new(&env, &config.token).transfer(&this, &recipient, &pot);
         env.storage().instance().set(&DataKey::Pot, &0i128);
         env.storage().instance().set(&DataKey::Round, &(round + 1));
+        Self::stamp_round_start(&env);
 
         PaidOut {
             recipient,
@@ -348,6 +376,49 @@ impl CircleContract {
             env.storage().instance().set(&DataKey::Config, &config);
             Finished { rounds: n }.publish(&env);
         }
+        Ok(())
+    }
+
+    /// Wind the circle down and release everyone's collateral.
+    ///
+    /// The admin may do this at any time before the circle finishes. Anyone may
+    /// do it once the current round has stalled past `round_timeout_ledgers` —
+    /// so an absent admin, or a defaulter whose collateral is spent and who can
+    /// therefore no longer be slashed, can never strand the members' funds.
+    ///
+    /// The current round is unwound: it never paid out, so contributions
+    /// (including those covered by a slash) go back to the contributors'
+    /// collateral balances, ready to withdraw.
+    pub fn cancel(env: Env, caller: Address) -> Result<(), Error> {
+        caller.require_auth();
+        let mut config = Self::load_config(&env)?;
+        if config.status != CircleStatus::Open && config.status != CircleStatus::Active {
+            return Err(Error::AlreadyEnded);
+        }
+
+        let by_timeout = caller != config.admin;
+        if by_timeout && !Self::round_has_stalled(&env, &config) {
+            return Err(Error::TimeoutNotReached);
+        }
+
+        // Refund the in-flight round: no recipient was paid from this pot.
+        let round = Self::round(&env);
+        let members = Self::members(&env);
+        for m in members.iter() {
+            if Self::has(&env, &DataKey::Contributed(round, m.clone())) {
+                let held = Self::collateral_of(&env, &m);
+                env.storage().instance().set(
+                    &DataKey::Collateral(m),
+                    &(held + config.contribution_amount),
+                );
+            }
+        }
+        env.storage().instance().set(&DataKey::Pot, &0i128);
+
+        config.status = CircleStatus::Cancelled;
+        env.storage().instance().set(&DataKey::Config, &config);
+
+        Cancelled { round, by_timeout }.publish(&env);
         Ok(())
     }
 
@@ -427,6 +498,20 @@ impl CircleContract {
         Self::has(&env, &DataKey::Contributed(round, member))
     }
 
+    /// Ledger at which the current round began, once the circle has started.
+    pub fn get_round_started_at(env: Env) -> Option<u32> {
+        Self::round_started_at(&env)
+    }
+
+    /// Whether anyone (not just the admin) may now `cancel` this circle.
+    pub fn is_stalled(env: Env) -> Result<bool, Error> {
+        let config = Self::load_config(&env)?;
+        if config.status != CircleStatus::Active {
+            return Ok(false);
+        }
+        Ok(Self::round_has_stalled(&env, &config))
+    }
+
     /// Collateral still held for a member (posted on join, reduced by slashes).
     pub fn get_collateral(env: Env, member: Address) -> i128 {
         Self::collateral_of(&env, &member)
@@ -457,8 +542,30 @@ impl CircleContract {
         env.storage().instance().get(&DataKey::Round).unwrap_or(0)
     }
 
+    fn round_started_at(env: &Env) -> Option<u32> {
+        env.storage().instance().get(&DataKey::RoundStartedAt)
+    }
+
     fn pot(env: &Env) -> i128 {
         env.storage().instance().get(&DataKey::Pot).unwrap_or(0)
+    }
+
+    fn stamp_round_start(env: &Env) {
+        env.storage()
+            .instance()
+            .set(&DataKey::RoundStartedAt, &env.ledger().sequence());
+    }
+
+    /// Whether the current round has gone unresolved past its deadline. Always
+    /// false before the circle starts — members can simply `leave` then.
+    fn round_has_stalled(env: &Env, config: &CircleConfig) -> bool {
+        match Self::round_started_at(env) {
+            Some(started) => {
+                env.ledger().sequence()
+                    > started.saturating_add(config.round_timeout_ledgers)
+            }
+            None => false,
+        }
     }
 
     /// Pay a member's remaining collateral back and zero the balance, so a
