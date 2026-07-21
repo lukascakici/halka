@@ -13,6 +13,8 @@ import {
   readCircleSummary,
   stroopsToXlm,
   ContractError,
+  hasEnded,
+  statusOf,
   type CircleSummary,
 } from "@/lib/circle";
 import { WalletError } from "@/lib/wallet";
@@ -220,8 +222,20 @@ function CircleCard({ id, address }: { id: string; address: string }) {
       {summary ? (
         <>
           <div className="flex items-center justify-between">
-            <span className="inline-flex items-center rounded-full bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent dark:bg-accent/15">
-              {summary.config.started ? `Round ${summary.round}` : "Open"}
+            <span
+              className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${
+                hasEnded(summary.config)
+                  ? "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+                  : "bg-accent-soft text-accent dark:bg-accent/15"
+              }`}
+            >
+              {statusOf(summary.config) === "Active"
+                ? `Round ${summary.round}`
+                : statusOf(summary.config) === "Open"
+                  ? "Open"
+                  : statusOf(summary.config) === "Cancelled"
+                    ? "Wound down"
+                    : "Completed"}
             </span>
             <ArrowUpRight
               className="h-4 w-4 text-zinc-300 transition-colors group-hover:text-zinc-900 dark:text-zinc-600 dark:group-hover:text-zinc-100"

@@ -5,6 +5,14 @@ import { xlmToStroops } from "./units";
 import { ContractError } from "./circle";
 import { withSeqRetry } from "./async";
 
+/**
+ * How long a round may stall before any member can wind the circle down.
+ * Stellar closes a ledger roughly every 5 seconds, so this is about 30 days —
+ * long enough not to disrupt a monthly circle, short enough that funds are
+ * never stranded for long.
+ */
+export const DEFAULT_ROUND_TIMEOUT_LEDGERS = 518_400;
+
 function makeFactory(publicKey: string): FactoryClient {
   return new FactoryClient({
     contractId: CONTRACTS.factory,
@@ -30,6 +38,7 @@ export async function createCircle(
   contributionXlm: string,
   collateralXlm: string,
   maxMembers: number,
+  roundTimeoutLedgers: number = DEFAULT_ROUND_TIMEOUT_LEDGERS,
 ): Promise<string> {
   return withSeqRetry(async () => {
     const tx = await makeFactory(publicKey).create_circle({
@@ -37,6 +46,7 @@ export async function createCircle(
       contribution_amount: xlmToStroops(contributionXlm),
       collateral_amount: xlmToStroops(collateralXlm),
       max_members: maxMembers,
+      round_timeout_ledgers: roundTimeoutLedgers,
     });
     if (tx.result.isErr()) {
       throw new ContractError("CreateFailed", tx.result.unwrapErr().message);

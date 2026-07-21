@@ -3,16 +3,20 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowUpRight,
+  Ban,
   CheckCircle2,
   Circle as CircleDot,
   Coins,
   Gift,
   Loader2,
+  LogOut,
   Play,
   Plus,
   ShieldAlert,
+  Undo2,
   Users,
 } from "lucide-react";
 import { useWallet } from "@/components/WalletProvider";
@@ -21,10 +25,16 @@ import { truncateAddress } from "@/lib/format";
 import {
   readCircleState,
   joinCircle,
+  leaveCircle,
   startCircle,
   contribute,
   claimPayout,
   slashMember,
+  cancelCircle,
+  withdrawCollateral,
+  isActive,
+  hasEnded,
+  statusOf,
   stroopsToXlm,
   ContractError,
   type CircleState,
@@ -41,7 +51,7 @@ const POLL_MS = 6000;
 /** A compact signature of the parts of state an action can change. */
 function circleSig(s: CircleState): string {
   const contributed = Object.values(s.contributions).filter(Boolean).length;
-  return `${s.config.started}|${s.round}|${s.pot}|${s.members.length}|${s.contributedThisRound}|${contributed}`;
+  return `${statusOf(s.config)}|${s.round}|${s.pot}|${s.members.length}|${s.contributedThisRound}|${contributed}|${s.myCollateral}`;
 }
 
 /**
@@ -66,6 +76,80 @@ function mergeState(prev: CircleState | null, next: CircleState): CircleState {
     contributions,
     contributedThisRound: prev.contributedThisRound || next.contributedThisRound,
   };
+}
+
+/**
+ * Winding a circle down mid-round is destructive and cannot be undone: only the
+ * round in flight is refunded, so members who already received their payout keep
+ * it while members still waiting for their turn don't get those rounds back.
+ * That asymmetry has to be stated before the click, not after.
+ */
+function WindDown({
+  stalled,
+  isAdmin,
+  pending,
+  onConfirm,
+}: {
+  stalled: boolean;
+  isAdmin: boolean;
+  pending: boolean;
+  onConfirm: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+
+  return (
+    <div className="mt-5 border-t border-zinc-100 pt-4 dark:border-zinc-800">
+      {stalled && !isAdmin && (
+        <p className="mb-3 inline-flex items-start gap-1.5 text-sm text-zinc-600 dark:text-zinc-300">
+          <AlertTriangle
+            className="mt-0.5 h-4 w-4 shrink-0 text-amber-500"
+            strokeWidth={2}
+          />
+          This round has stalled past its deadline, so any member can wind the
+          circle down and release everyone&apos;s collateral.
+        </p>
+      )}
+      {!confirming ? (
+        <button
+          onClick={() => setConfirming(true)}
+          disabled={pending}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-red-600 transition-colors hover:text-red-700 disabled:opacity-50 dark:text-red-400"
+        >
+          <Ban className="h-4 w-4" strokeWidth={2} /> Wind down this circle
+        </button>
+      ) : (
+        <div className="rounded-xl bg-red-50 p-4 dark:bg-red-950/30">
+          <p className="text-sm font-medium text-red-900 dark:text-red-200">
+            This ends the circle for everyone and cannot be undone.
+          </p>
+          <p className="mt-1.5 text-sm text-red-800/80 dark:text-red-200/70">
+            Only the current round is refunded. Members who already received
+            their payout keep it, and members still waiting for their turn will
+            not get those rounds back — so winding down mid-circle leaves some
+            people ahead and others behind.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              onClick={() => {
+                setConfirming(false);
+                onConfirm();
+              }}
+              disabled={pending}
+              className="inline-flex h-10 items-center gap-2 rounded-full bg-red-600 px-4 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+            >
+              <Ban className="h-4 w-4" strokeWidth={2} /> Yes, wind it down
+            </button>
+            <button
+              onClick={() => setConfirming(false)}
+              className="inline-flex h-10 items-center rounded-full px-4 text-sm font-medium text-red-900 transition-colors hover:bg-red-100 dark:text-red-200 dark:hover:bg-red-950/50"
+            >
+              Keep the circle running
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function CircleDetail({ circleId }: { circleId: string }) {
@@ -175,7 +259,10 @@ export function CircleDetail({ circleId }: { circleId: string }) {
   }
 
   const { config, members, round, pot, recipient, contributions } = state;
-  const started = config.started;
+  const started = isActive(config);
+  const ended = hasEnded(config);
+  const cancelled = statusOf(config) === "Cancelled";
+  const open = statusOf(config) === "Open";
   const memberCount = members.length;
   const contributedCount = Object.values(contributions).filter(Boolean).length;
   // The recipient is exempt, so a round needs everyone else (n - 1).
@@ -199,8 +286,20 @@ export function CircleDetail({ circleId }: { circleId: string }) {
         {/* Overview */}
         <Panel>
           <div className="flex items-start justify-between gap-3">
-            <span className="inline-flex items-center rounded-full bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent dark:bg-accent/15">
-              {started ? `Active · Round ${round}` : "Open to join"}
+            <span
+              className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${
+                ended
+                  ? "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+                  : "bg-accent-soft text-accent dark:bg-accent/15"
+              }`}
+            >
+              {started
+                ? `Active · Round ${round}`
+                : open
+                  ? "Open to join"
+                  : cancelled
+                    ? "Wound down"
+                    : "Completed"}
             </span>
             <a
               href={NETWORK.explorerContract(circleId)}
@@ -265,7 +364,7 @@ export function CircleDetail({ circleId }: { circleId: string }) {
         {/* Actions */}
         <Panel>
           <div className="flex flex-wrap items-center gap-3">
-            {!started && !state.isMember && !full && (
+            {open && !state.isMember && !full && (
               <PrimaryButton
                 onClick={() => runAction("Join", () => joinCircle(circleId, address!))}
                 pending={pending}
@@ -273,7 +372,17 @@ export function CircleDetail({ circleId }: { circleId: string }) {
                 icon={Plus}
               />
             )}
-            {!started && state.isAdmin && memberCount >= 2 && (
+            {open && state.isMember && (
+              <button
+                onClick={() => runAction("Leave", () => leaveCircle(circleId, address!))}
+                disabled={pending}
+                className="inline-flex h-11 items-center gap-2 rounded-full px-4 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              >
+                <LogOut className="h-4 w-4" strokeWidth={2} /> Leave · get{" "}
+                {stroopsToXlm(config.collateral_amount)} XLM back
+              </button>
+            )}
+            {open && state.isAdmin && memberCount >= 2 && (
               <PrimaryButton
                 onClick={() => runAction("Start", () => startCircle(circleId, address!))}
                 pending={pending}
@@ -310,16 +419,45 @@ export function CircleDetail({ circleId }: { circleId: string }) {
                 contributed this round
               </span>
             )}
-            {!started && state.isMember && (
+            {open && state.isMember && (
               <span className="inline-flex items-center gap-1.5 text-sm font-medium text-accent">
                 <CheckCircle2 className="h-4 w-4" strokeWidth={2.5} /> You&apos;re in
                 — waiting for the admin to start
               </span>
             )}
-            {!started && !state.isMember && full && (
+            {open && !state.isMember && full && (
               <span className="text-sm text-zinc-500">This circle is full.</span>
             )}
+            {ended && state.myCollateral > 0n && (
+              <PrimaryButton
+                onClick={() =>
+                  runAction("Withdraw", () => withdrawCollateral(circleId, address!))
+                }
+                pending={pending}
+                text={`Withdraw ${stroopsToXlm(state.myCollateral)} XLM collateral`}
+                icon={Undo2}
+              />
+            )}
+            {ended && state.isMember && state.myCollateral === 0n && (
+              <span className="text-sm text-zinc-500">
+                {cancelled
+                  ? "This circle was wound down. You have nothing left to withdraw."
+                  : "This circle is complete. You have nothing left to withdraw."}
+              </span>
+            )}
           </div>
+
+          {/* Winding down early — destructive, so it sits apart and confirms. */}
+          {started && (state.isAdmin || state.isStalled) && (
+            <WindDown
+              stalled={state.isStalled}
+              isAdmin={state.isAdmin}
+              pending={pending}
+              onConfirm={() =>
+                runAction("Wind down", () => cancelCircle(circleId, address!))
+              }
+            />
+          )}
         </Panel>
 
         <ActionStatus action={action} onDismiss={() => setAction({ status: "idle" })} />

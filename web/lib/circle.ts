@@ -1,9 +1,31 @@
-import { Client as CircleClient, type CircleConfig } from "@circle-client";
+import {
+  Client as CircleClient,
+  type CircleConfig,
+  type CircleStatus,
+} from "@circle-client";
 import { NETWORK } from "./config";
 import { signXdr } from "./wallet";
 import { withSeqRetry } from "./async";
 
 export { xlmToStroops, stroopsToXlm } from "./units";
+
+export type CircleStatusTag = CircleStatus["tag"];
+
+/** The contract models status as a tagged union; the UI only needs the tag. */
+export function statusOf(config: CircleConfig): CircleStatusTag {
+  return config.status.tag;
+}
+
+/** Rounds are running — members are committed and collateral is locked. */
+export function isActive(config: CircleConfig): boolean {
+  return config.status.tag === "Active";
+}
+
+/** The circle has come to rest, so collateral can be withdrawn. */
+export function hasEnded(config: CircleConfig): boolean {
+  const tag = config.status.tag;
+  return tag === "Finished" || tag === "Cancelled";
+}
 
 /** A contract-level error surfaced to the UI with a friendly message. */
 export class ContractError extends Error {
@@ -29,6 +51,14 @@ const FRIENDLY: Record<string, string> = {
   NotRecipient: "Only this round's recipient can claim the pot.",
   NotDefaulted: "This member has already contributed.",
   IsRecipient: "It's your turn to receive — you don't contribute this round.",
+  InsufficientCollateral:
+    "This member's collateral is used up, so they can't be slashed again. The circle can be wound down instead.",
+  NotWithdrawable:
+    "Your collateral stays locked until the circle finishes or is wound down.",
+  NothingToWithdraw: "You have no collateral left to withdraw.",
+  TimeoutNotReached:
+    "This round hasn't stalled long enough yet. Only the admin can wind the circle down before then.",
+  AlreadyEnded: "This circle has already ended.",
 };
 
 function toContractError(code: string): ContractError {
@@ -61,6 +91,10 @@ export interface CircleState {
   isMember: boolean;
   isAdmin: boolean;
   contributedThisRound: boolean;
+  /** Collateral the contract still holds for the connected user. */
+  myCollateral: bigint;
+  /** The round has stalled, so anyone may wind the circle down. */
+  isStalled: boolean;
 }
 
 /** Read the full state of one circle for the connected user. */
@@ -76,11 +110,14 @@ export async function readCircleState(
   }
   const config = configTx.result.unwrap();
 
-  const [membersTx, roundTx, potTx] = await Promise.all([
-    client.get_members(),
-    client.get_round(),
-    client.get_pot(),
-  ]);
+  const [membersTx, roundTx, potTx, collateralTx, stalledTx] =
+    await Promise.all([
+      client.get_members(),
+      client.get_round(),
+      client.get_pot(),
+      client.get_collateral({ member: publicKey }),
+      client.is_stalled(),
+    ]);
   const members = membersTx.result;
   const round = roundTx.result;
   const pot = potTx.result;
@@ -107,6 +144,8 @@ export async function readCircleState(
     isMember: members.includes(publicKey),
     isAdmin: config.admin === publicKey,
     contributedThisRound: contributions[publicKey] ?? false,
+    myCollateral: collateralTx.result,
+    isStalled: stalledTx.result.isOk() ? stalledTx.result.unwrap() : false,
   };
 }
 
@@ -156,6 +195,34 @@ async function submit(tx: {
 export async function joinCircle(circleId: string, publicKey: string) {
   return withSeqRetry(async () =>
     submit(await makeClient(circleId, publicKey).join({ member: publicKey })),
+  );
+}
+
+/** Leave a circle that hasn't started, taking the collateral back. */
+export async function leaveCircle(circleId: string, publicKey: string) {
+  return withSeqRetry(async () =>
+    submit(await makeClient(circleId, publicKey).leave({ member: publicKey })),
+  );
+}
+
+/**
+ * Wind a circle down. The admin can do this any time before it finishes; once a
+ * round has stalled past its timeout, any member can.
+ */
+export async function cancelCircle(circleId: string, publicKey: string) {
+  return withSeqRetry(async () =>
+    submit(await makeClient(circleId, publicKey).cancel({ caller: publicKey })),
+  );
+}
+
+/** Reclaim remaining collateral once the circle has finished or been cancelled. */
+export async function withdrawCollateral(circleId: string, publicKey: string) {
+  return withSeqRetry(async () =>
+    submit(
+      await makeClient(circleId, publicKey).withdraw_collateral({
+        member: publicKey,
+      }),
+    ),
   );
 }
 
