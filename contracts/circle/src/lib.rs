@@ -25,6 +25,9 @@ pub enum DataKey {
     Pot,
     /// Whether `member` has contributed in a given `round`.
     Contributed(u32, Address),
+    /// Collateral still held for `member`. Posted on join, drawn down by
+    /// `slash`, and returned when the member exits.
+    Collateral(Address),
 }
 
 #[contracttype]
@@ -58,6 +61,10 @@ pub enum Error {
     /// This round's recipient is exempt — they receive the pot, so they don't
     /// contribute (and can't be slashed) this round.
     IsRecipient = 13,
+    /// The member's remaining collateral can't cover another missed
+    /// contribution, so slashing would pay the pot out of *other* members'
+    /// collateral. The circle is stuck and must be wound down instead.
+    InsufficientCollateral = 14,
 }
 
 #[contractevent]
@@ -166,6 +173,10 @@ impl CircleContract {
                 &config.collateral_amount,
             );
         }
+        env.storage().instance().set(
+            &DataKey::Collateral(member.clone()),
+            &config.collateral_amount,
+        );
 
         members.push_back(member.clone());
         env.storage().instance().set(&DataKey::Members, &members);
@@ -291,7 +302,18 @@ impl CircleContract {
             return Err(Error::NotDefaulted);
         }
 
-        // The collateral already held by the contract covers the contribution.
+        // Draw the missed contribution from *this member's* collateral. Without
+        // this check a repeat defaulter's slashes would be funded by everyone
+        // else's collateral and the contract could not honour the payouts.
+        let held = Self::collateral_of(&env, &member);
+        if held < config.contribution_amount {
+            return Err(Error::InsufficientCollateral);
+        }
+        env.storage().instance().set(
+            &DataKey::Collateral(member.clone()),
+            &(held - config.contribution_amount),
+        );
+
         env.storage().instance().set(&key, &true);
         Self::add_pot(&env, config.contribution_amount);
 
@@ -324,6 +346,11 @@ impl CircleContract {
         Self::has(&env, &DataKey::Contributed(round, member))
     }
 
+    /// Collateral still held for a member (posted on join, reduced by slashes).
+    pub fn get_collateral(env: Env, member: Address) -> i128 {
+        Self::collateral_of(&env, &member)
+    }
+
     /// The member who receives the pot in the given round.
     pub fn get_recipient(env: Env, round: u32) -> Result<Address, Error> {
         Self::recipient_at(&Self::members(&env), round).ok_or(Error::NotRecipient)
@@ -351,6 +378,13 @@ impl CircleContract {
 
     fn pot(env: &Env) -> i128 {
         env.storage().instance().get(&DataKey::Pot).unwrap_or(0)
+    }
+
+    fn collateral_of(env: &Env, member: &Address) -> i128 {
+        env.storage()
+            .instance()
+            .get(&DataKey::Collateral(member.clone()))
+            .unwrap_or(0)
     }
 
     fn add_pot(env: &Env, amount: i128) {

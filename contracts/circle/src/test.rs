@@ -137,6 +137,63 @@ fn test_slash_default_covers_round() {
 }
 
 #[test]
+fn test_slash_draws_down_collateral() {
+    let env = Env::default();
+    let s = setup(&env);
+    let m1 = member(&env, &s);
+    let m2 = member(&env, &s);
+    s.client.join(&m1);
+    s.client.join(&m2);
+    assert_eq!(s.client.get_collateral(&m2), COLLATERAL);
+
+    s.client.start();
+    s.client.slash(&m2);
+    assert_eq!(s.client.get_collateral(&m2), COLLATERAL - CONTRIBUTION);
+}
+
+#[test]
+fn test_repeat_defaulter_cannot_exceed_own_collateral() {
+    let env = Env::default();
+    let s = setup(&env);
+    let m1 = member(&env, &s);
+    let m2 = member(&env, &s);
+    let m3 = member(&env, &s);
+    s.client.join(&m1);
+    s.client.join(&m2);
+    s.client.join(&m3);
+    s.client.start();
+
+    // COLLATERAL covers exactly two missed contributions.
+    s.client.slash(&m3);
+    s.client.contribute(&m2);
+    s.client.claim_payout();
+    s.client.slash(&m3);
+    assert_eq!(s.client.get_collateral(&m3), 0);
+    s.client.contribute(&m1);
+    s.client.claim_payout();
+
+    // Round 3: m3 is the recipient, so rotate one more round before defaulting
+    // again — by then their collateral is spent and the slash must be refused.
+    s.client.contribute(&m1);
+    s.client.contribute(&m2);
+    s.client.claim_payout();
+    assert_eq!(s.client.get_round(), 4);
+    assert_eq!(
+        s.client.try_slash(&m3),
+        Err(Ok(Error::InsufficientCollateral))
+    );
+
+    // The contract never promised more than it holds.
+    assert_eq!(
+        s.token.balance(&s.client.address),
+        s.client.get_pot()
+            + s.client.get_collateral(&m1)
+            + s.client.get_collateral(&m2)
+            + s.client.get_collateral(&m3)
+    );
+}
+
+#[test]
 fn test_cannot_slash_recipient() {
     let env = Env::default();
     let s = setup(&env);
