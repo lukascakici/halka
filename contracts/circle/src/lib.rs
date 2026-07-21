@@ -7,6 +7,15 @@
 //! have contributed, the round's recipient claims the pot and the circle rotates
 //! to the next member. Reliability and defaults are reported to a shared
 //! [`reputation`] contract (inter-contract communication).
+//!
+//! **This contract is deliberately not upgradeable.** It custodies the members'
+//! collateral, and a circle's admin is whoever created it — an ordinary user,
+//! not the protocol. An `upgrade` here would let that user swap in code that
+//! drains everyone's deposits, which is a far larger power than any of the
+//! admin actions below. Members can therefore rely on the code they joined
+//! under never changing. Fixes ship as a new wasm via `Factory::set_circle_wasm`
+//! and apply to circles created afterwards; existing circles can always be
+//! wound down through `cancel`.
 
 use interfaces::ReputationClient;
 use soroban_sdk::{
@@ -561,8 +570,7 @@ impl CircleContract {
     fn round_has_stalled(env: &Env, config: &CircleConfig) -> bool {
         match Self::round_started_at(env) {
             Some(started) => {
-                env.ledger().sequence()
-                    > started.saturating_add(config.round_timeout_ledgers)
+                env.ledger().sequence() > started.saturating_add(config.round_timeout_ledgers)
             }
             None => false,
         }
@@ -570,7 +578,11 @@ impl CircleContract {
 
     /// Pay a member's remaining collateral back and zero the balance, so a
     /// repeated call can't drain the contract.
-    fn return_collateral(env: &Env, config: &CircleConfig, member: &Address) -> Result<i128, Error> {
+    fn return_collateral(
+        env: &Env,
+        config: &CircleConfig,
+        member: &Address,
+    ) -> Result<i128, Error> {
         let amount = Self::collateral_of(env, member);
         if amount <= 0 {
             return Err(Error::NothingToWithdraw);

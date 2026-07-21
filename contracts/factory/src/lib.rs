@@ -40,6 +40,19 @@ pub struct CircleCreated {
     pub circle: Address,
 }
 
+#[contractevent]
+#[derive(Clone)]
+pub struct AdminChanged {
+    #[topic]
+    pub admin: Address,
+}
+
+#[contractevent]
+#[derive(Clone)]
+pub struct CircleWasmChanged {
+    pub wasm: BytesN<32>,
+}
+
 #[contract]
 pub struct FactoryContract;
 
@@ -116,6 +129,45 @@ impl FactoryContract {
         Ok(circle)
     }
 
+    /// Hand the admin role to another account — the route to a multisig or a
+    /// timelock once the protocol is live.
+    pub fn set_admin(env: Env, new_admin: Address) -> Result<(), Error> {
+        Self::admin(&env)?.require_auth();
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
+        AdminChanged { admin: new_admin }.publish(&env);
+        Ok(())
+    }
+
+    /// Point the factory at a new Circle wasm. Circles already deployed keep
+    /// running the code their members agreed to — this only affects circles
+    /// created from here on.
+    pub fn set_circle_wasm(env: Env, wasm: BytesN<32>) -> Result<(), Error> {
+        Self::admin(&env)?.require_auth();
+        env.storage().instance().set(&DataKey::CircleWasm, &wasm);
+        CircleWasmChanged { wasm }.publish(&env);
+        Ok(())
+    }
+
+    /// Replace this contract's code. The factory only deploys and indexes
+    /// circles — it never custodies member funds — so upgrading it cannot
+    /// touch money already committed to a circle.
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
+        Self::admin(&env)?.require_auth();
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
+        Ok(())
+    }
+
+    pub fn get_admin(env: Env) -> Result<Address, Error> {
+        Self::admin(&env)
+    }
+
+    pub fn get_circle_wasm(env: Env) -> Result<BytesN<32>, Error> {
+        env.storage()
+            .instance()
+            .get(&DataKey::CircleWasm)
+            .ok_or(Error::NotInitialized)
+    }
+
     pub fn list_circles(env: Env) -> Vec<Address> {
         env.storage()
             .instance()
@@ -125,6 +177,13 @@ impl FactoryContract {
 
     pub fn get_circle_count(env: Env) -> u32 {
         env.storage().instance().get(&DataKey::Count).unwrap_or(0)
+    }
+
+    fn admin(env: &Env) -> Result<Address, Error> {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)
     }
 }
 
