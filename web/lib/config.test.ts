@@ -8,15 +8,13 @@ describe("network configuration", () => {
   });
 
   // The guard that stops the switcher from offering a network that would fail
-  // on its first call. Mainnet needs a paid RPC endpoint and deployed
-  // contracts, neither of which has a default.
-  it("locks mainnet until an RPC endpoint and contracts are configured", () => {
-    const configured = Boolean(
-      process.env.NEXT_PUBLIC_MAINNET_RPC_URL &&
-        process.env.NEXT_PUBLIC_MAINNET_FACTORY &&
-        process.env.NEXT_PUBLIC_MAINNET_REPUTATION,
+  // on its first call. The mainnet contracts are deployed and hardcoded, so the
+  // only remaining requirement is the RPC endpoint (there is no free public one
+  // and it carries an API key, so it has no default).
+  it("locks mainnet until its RPC endpoint is configured", () => {
+    expect(isNetworkAvailable("mainnet")).toBe(
+      Boolean(process.env.NEXT_PUBLIC_MAINNET_RPC_URL),
     );
-    expect(isNetworkAvailable("mainnet")).toBe(configured);
   });
 
   it("never offers a faucet on mainnet", () => {

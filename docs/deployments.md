@@ -1,9 +1,41 @@
 # Deployments
 
-All contracts run on the **Stellar Testnet**. Deploy with
-[`scripts/deploy-testnet.sh`](../scripts/deploy-testnet.sh).
+Deploy with [`scripts/deploy.sh`](../scripts/deploy.sh):
 
-## Current — Factory + Reputation + Circle (fund-safety revision)
+```bash
+IDENTITY=halka-deployer ./scripts/deploy.sh                   # testnet
+IDENTITY=halka-mainnet NETWORK=mainnet ./scripts/deploy.sh    # mainnet
+```
+
+Mainnet has no public Soroban RPC, so register your provider's endpoint with
+the CLI first (`stellar network add mainnet --rpc-url …`). The script derives
+the native XLM SAC address per network and requires a typed confirmation
+before touching mainnet.
+
+## Mainnet
+
+Live on the Stellar public network since 2026-07-22.
+
+| Contract | Address |
+| --- | --- |
+| Factory | `CDKRCTCUHNJJIZW5I4VFI6SG57DMIHHFXIGPW5KDKIJEUMSSAMMLC7RJ` |
+| Reputation | `CDACN7M44Z2NU4T7CLW5VBJHCQNDMVSJPZNAHGVJ3BUPOVIB4PSOOUE2` |
+| Token (native XLM SAC) | `CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA` |
+| Circle wasm hash | `041e8895c77675c2a0fce4d0d78349993e084112ba5445f44aa8831599623c06` |
+
+Same wasm as testnet. The deploy cost ~47.6 XLM, almost entirely wasm-upload
+rent (mainnet's state makes uploads far dearer than testnet's). The admin of
+Factory and Reputation is the deployer key; both contracts are upgradeable,
+Circle is not.
+
+- Factory explorer: https://stellar.expert/explorer/public/contract/CDKRCTCUHNJJIZW5I4VFI6SG57DMIHHFXIGPW5KDKIJEUMSSAMMLC7RJ
+- Reputation explorer: https://stellar.expert/explorer/public/contract/CDACN7M44Z2NU4T7CLW5VBJHCQNDMVSJPZNAHGVJ3BUPOVIB4PSOOUE2
+
+The mainnet contracts still carry the open caveats: no audit, and defaulting
+costs no tokens (only reputation). Keep circles small and among people who
+know each other.
+
+## Testnet — Factory + Reputation + Circle (fund-safety revision)
 
 | Contract | Address |
 | --- | --- |

@@ -40,3 +40,7 @@ target/
 /level5-blue-belt.txt
 /level6-black-belt.txt
 /level7-master-track.txt
+
+# No Node project lives at the repo root — the web app has its own lockfile.
+# A root one only appears when npm is run in the wrong directory.
+/package-lock.json

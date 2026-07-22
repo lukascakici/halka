@@ -69,8 +69,14 @@ const CONTRACTS_BY_NETWORK: Record<NetworkId, ContractAddresses> = {
     token: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
   },
   mainnet: {
-    factory: process.env.NEXT_PUBLIC_MAINNET_FACTORY ?? "",
-    reputation: process.env.NEXT_PUBLIC_MAINNET_REPUTATION ?? "",
+    // Deployed addresses are public (unlike the RPC URL), so they live here as
+    // defaults; the env vars stay as an override for a fresh deployment.
+    factory:
+      process.env.NEXT_PUBLIC_MAINNET_FACTORY ??
+      "CDKRCTCUHNJJIZW5I4VFI6SG57DMIHHFXIGPW5KDKIJEUMSSAMMLC7RJ",
+    reputation:
+      process.env.NEXT_PUBLIC_MAINNET_REPUTATION ??
+      "CDACN7M44Z2NU4T7CLW5VBJHCQNDMVSJPZNAHGVJ3BUPOVIB4PSOOUE2",
     // Derived with `stellar contract id asset --asset native --network mainnet`.
     token: "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA",
   },
